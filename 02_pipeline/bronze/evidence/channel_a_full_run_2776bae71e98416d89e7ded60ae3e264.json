@@ -1,0 +1,91 @@
+{
+  "source": "user-pasted Databricks query result in chat",
+  "recorded_on": "2026-10-12",
+  "table": "commerce_poc.bronze.events",
+  "test_run_id": "2776bae71e98416d89e7ded60ae3e264",
+  "validation_scope": "The six pasted rows; this is not a fresh remote query or a whole-table duplicate audit.",
+  "checks": {
+    "pasted_row_count": 6,
+    "distinct_event_ids": 6,
+    "raw_business_fields_match_fixture": true,
+    "local_normalization_matches_expected_common_events": true
+  },
+  "limitations": [
+    "Local normalization check does not verify Spark Silver types, Quarantine or Delta storage.",
+    "bronze_ingested_at is a micro-batch timestamp, not a measured Delta commit completion time."
+  ],
+  "rows": [
+    {
+      "event_id": "a-poc-v1-01",
+      "event_name": "order_created",
+      "order_no": "A-001",
+      "published_at": "2026-10-11T15:00:08.717143+00:00",
+      "source_event_hub": "commerce-events",
+      "partition": 0,
+      "offset": 15,
+      "broker_timestamp": "2026-10-11T15:00:13.075+00:00",
+      "bronze_ingested_at": "2026-10-11T15:00:15.008+00:00",
+      "raw_payload": "{\"schema_version\": \"1.0\", \"channel_id\": \"A\", \"event_id\": \"a-poc-v1-01\", \"event_name\": \"order_created\", \"occurred_at\": \"2026-10-10T03:00:00+00:00\", \"order_no\": \"A-001\", \"customer_no\": \"U-001\", \"payload\": {\"total\": 50000, \"items\": [{\"item_no\": \"A-001-1\", \"sku\": \"A-SKU-001\", \"qty\": 2, \"price\": 25000}]}, \"test_run_id\": \"2776bae71e98416d89e7ded60ae3e264\", \"published_at\": \"2026-10-11T15:00:08.717143+00:00\"}"
+    },
+    {
+      "event_id": "a-poc-v1-02",
+      "event_name": "order_cancelled",
+      "order_no": "A-001",
+      "published_at": "2026-10-11T15:00:21.667753+00:00",
+      "source_event_hub": "commerce-events",
+      "partition": 0,
+      "offset": 16,
+      "broker_timestamp": "2026-10-11T15:00:25.534+00:00",
+      "bronze_ingested_at": "2026-10-11T15:00:30.008+00:00",
+      "raw_payload": "{\"schema_version\": \"1.0\", \"channel_id\": \"A\", \"event_id\": \"a-poc-v1-02\", \"event_name\": \"order_cancelled\", \"occurred_at\": \"2026-10-10T03:01:00+00:00\", \"order_no\": \"A-001\", \"customer_no\": \"U-001\", \"payload\": {\"cancel_no\": \"AC-001\", \"reason\": \"customer\", \"items\": [{\"item_no\": \"A-001-1\", \"sku\": \"A-SKU-001\", \"qty\": 2, \"price\": 25000}]}, \"test_run_id\": \"2776bae71e98416d89e7ded60ae3e264\", \"published_at\": \"2026-10-11T15:00:21.667753+00:00\"}"
+    },
+    {
+      "event_id": "a-poc-v1-03",
+      "event_name": "order_created",
+      "order_no": "A-002",
+      "published_at": "2026-10-11T15:00:34.107892+00:00",
+      "source_event_hub": "commerce-events",
+      "partition": 0,
+      "offset": 17,
+      "broker_timestamp": "2026-10-11T15:00:38.443+00:00",
+      "bronze_ingested_at": "2026-10-11T15:00:40.007+00:00",
+      "raw_payload": "{\"schema_version\": \"1.0\", \"channel_id\": \"A\", \"event_id\": \"a-poc-v1-03\", \"event_name\": \"order_created\", \"occurred_at\": \"2026-10-10T03:02:00+00:00\", \"order_no\": \"A-002\", \"customer_no\": \"U-001\", \"payload\": {\"total\": 80000, \"items\": [{\"item_no\": \"A-002-1\", \"sku\": \"A-SKU-001\", \"qty\": 2, \"price\": 25000}, {\"item_no\": \"A-002-2\", \"sku\": \"A-SKU-002\", \"qty\": 1, \"price\": 30000}]}, \"test_run_id\": \"2776bae71e98416d89e7ded60ae3e264\", \"published_at\": \"2026-10-11T15:00:34.107892+00:00\"}"
+    },
+    {
+      "event_id": "a-poc-v1-04",
+      "event_name": "payment_failed",
+      "order_no": "A-002",
+      "published_at": "2026-10-11T15:00:47.012713+00:00",
+      "source_event_hub": "commerce-events",
+      "partition": 0,
+      "offset": 18,
+      "broker_timestamp": "2026-10-11T15:00:49.032+00:00",
+      "bronze_ingested_at": "2026-10-11T15:00:50.008+00:00",
+      "raw_payload": "{\"schema_version\": \"1.0\", \"channel_id\": \"A\", \"event_id\": \"a-poc-v1-04\", \"event_name\": \"payment_failed\", \"occurred_at\": \"2026-10-10T03:03:00+00:00\", \"order_no\": \"A-002\", \"customer_no\": \"U-001\", \"payload\": {\"payment_no\": \"AP-001\", \"amount\": 80000, \"method\": \"card\", \"error\": \"card_declined\"}, \"test_run_id\": \"2776bae71e98416d89e7ded60ae3e264\", \"published_at\": \"2026-10-11T15:00:47.012713+00:00\"}"
+    },
+    {
+      "event_id": "a-poc-v1-05",
+      "event_name": "payment_succeeded",
+      "order_no": "A-002",
+      "published_at": "2026-10-11T15:00:57.603893+00:00",
+      "source_event_hub": "commerce-events",
+      "partition": 0,
+      "offset": 19,
+      "broker_timestamp": "2026-10-11T15:00:59.595+00:00",
+      "bronze_ingested_at": "2026-10-11T15:01:00.013+00:00",
+      "raw_payload": "{\"schema_version\": \"1.0\", \"channel_id\": \"A\", \"event_id\": \"a-poc-v1-05\", \"event_name\": \"payment_succeeded\", \"occurred_at\": \"2026-10-10T03:04:00+00:00\", \"order_no\": \"A-002\", \"customer_no\": \"U-001\", \"payload\": {\"payment_no\": \"AP-002\", \"amount\": 80000, \"method\": \"card\"}, \"test_run_id\": \"2776bae71e98416d89e7ded60ae3e264\", \"published_at\": \"2026-10-11T15:00:57.603893+00:00\"}"
+    },
+    {
+      "event_id": "a-poc-v1-06",
+      "event_name": "refund_completed",
+      "order_no": "A-002",
+      "published_at": "2026-10-11T15:01:08.161792+00:00",
+      "source_event_hub": "commerce-events",
+      "partition": 0,
+      "offset": 20,
+      "broker_timestamp": "2026-10-11T15:01:12.004+00:00",
+      "bronze_ingested_at": "2026-10-11T15:01:15.008+00:00",
+      "raw_payload": "{\"schema_version\": \"1.0\", \"channel_id\": \"A\", \"event_id\": \"a-poc-v1-06\", \"event_name\": \"refund_completed\", \"occurred_at\": \"2026-10-10T03:05:00+00:00\", \"order_no\": \"A-002\", \"customer_no\": \"U-001\", \"payload\": {\"refund_no\": \"AR-001\", \"payment_no\": \"AP-002\", \"amount\": 25000, \"items\": [{\"item_no\": \"A-002-1\", \"sku\": \"A-SKU-001\", \"qty\": 1, \"price\": 25000}]}, \"test_run_id\": \"2776bae71e98416d89e7ded60ae3e264\", \"published_at\": \"2026-10-11T15:01:08.161792+00:00\"}"
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 
 - 서로 다른 채널 원본을 공통 Silver 이벤트로 통합하고 이후 Gold·대시보드·Genie로 연결한다.
 - **변경: 책임별 폴더로 통합하고, 원본 버전 처리와 상품 SCD Type 2 로컬 로직을 추가했다.**
-- Azure 송신·Bronze/Silver 적재·Gold Delta 저장은 아직 미검증이다.
+- **변경: GitHub Actions Function 배포는 성공했고, 사용자 공유 결과에서 A의 Bronze 6건 적재를 확인했다. Spark Silver 적재·Gold Delta 저장은 아직 미검증이다.**
 
 ## 폴더 구성
 
@@ -23,8 +23,8 @@ miniproj/
 │   ├── src/                    # 고정 원본 생성
 │   └── data/                   # 입력·기대 행·SKU 매핑·상품 변경 이력
 ├── 02_pipeline/
-│   ├── ingestion/              # 송신·수집: 코드 준비, 원격 확인 필요
-│   ├── bronze/                 # 원문 적재: 원격 확인 필요
+│   ├── ingestion/              # A 송신 경로 확인, B/C 후속 구현
+│   ├── bronze/                 # A 6건 원문 적재 확인·실행 근거
 │   ├── silver/                 # A v1/v2 → 공통 이벤트
 │   ├── gold/                   # 상품 SCD2·시점 조회·Delta 저장 함수
 │   ├── tests/                  # 로컬 검증
@@ -52,6 +52,6 @@ python -m unittest discover -s .\02_pipeline\tests -v
 
 로컬 정상 변환·자료형·미매핑·SCD 재생·유효기간 경계·충돌을 테스트한다. 단일 Silver 테이블의 Spark schema·Quarantine·배치 간 멱등 저장과 원격 Delta 실행은 미구현 또는 미검증이며, 로컬 테스트로 완료 처리하지 않는다.
 
-**변경: A HTTP 송신기·Function 원본 키 수정본·일반 컴퓨트용 Bronze 스트리밍 노트북을 준비했다. 다음 작업은 Function 수정 배포 후 HTTP → Event Hubs → Bronze 경로를 직접 확인하는 것이다. Azure 원격 성공은 아직 확인하지 않았다.**
+**변경: 사용자 공유 결과로 A의 HTTP → Event Hubs → Bronze 6건을 확인했다. 공유 원문을 로컬 변환한 결과도 독립 기대 공통 이벤트와 일치한다. 다음 작업은 명시적 Spark 공통 스키마·오류 격리·이벤트 ID 기준 멱등 Delta 저장이다. 실행 근거는 02_pipeline/bronze/evidence에 보관한다.**
 
 Linear의 기존 SCD 제외 문구·보일러플레이트 협업 문구보다 최신 사용자 승인과 AGENTS.md를 우선한다. 이번 반영 대상은 로컬 miniproj다.

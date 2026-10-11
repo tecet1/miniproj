@@ -2,7 +2,7 @@
 
 - **추가: 01_event_hubs_to_bronze_live.ipynb로 일반 컴퓨트에서 계속 실행되는 A 스트리밍을 확인한다.**
 - 기존 원문·출처 컬럼과 Delta 테이블·체크포인트를 유지한다.
-- 로컬 구조·문법 검증은 완료했지만 실제 Databricks 실행은 미검증이다.
+- **변경: 2026-10-12 사용자가 공유한 Databricks 결과에서 A 고정 6개 이벤트의 Bronze 적재를 확인했다.**
 
 ## 실행 조건
 
@@ -28,3 +28,10 @@ raw_payload의 event_id/event_name/order_no와 원본 fixture도 대조한다. �
 - 파일 채널의 Landing·Auto Loader는 추후 별도로 연결한다.
 
 참고: [트리거 설정과 체크포인트 재사용](https://learn.microsoft.com/en-us/azure/databricks/structured-streaming/triggers), [Kafka 서비스 자격 증명](https://learn.microsoft.com/en-us/azure/databricks/connect/streaming/kafka/authentication).
+
+## 확인된 실행 근거
+
+- **추가: test_run_id=2776bae71e98416d89e7ded60ae3e264의 사용자 공유 결과를 evidence/channel_a_full_run_2776bae71e98416d89e7ded60ae3e264.json에 보존했다.**
+- **추가: 공유된 6행의 원본 업무 필드는 고정 fixture와 같으며, 기존 로컬 normalize_event 결과도 독립 기대 공통 이벤트 6개와 일치했다.**
+
+commerce-events의 partition=0, offset=15~20이 기록됐다. 검증 범위는 공유된 6행이며 전체 Bronze 테이블의 중복 감사가 아니다. 앞선 단건 실행과 전체 실행은 첫 event_id를 재사용하므로 Silver에서 (channel_id, event_id) 기준 중복 처리가 필요하다. Spark 타입 지정·Quarantine·Delta 멱등 저장은 다음 단계다.
