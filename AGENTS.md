@@ -70,7 +70,7 @@
 
 | 목적 | 명령 |
 |---|---|
-| 이벤트 생성 | `python .\01_contracts\src\<생성기>.py` (확정 후 기입) |
+| 이벤트 생성 | `python .\01_contracts\src\generate.py` |
 | 전체 로컬 테스트 | `python -m unittest discover -s .\02_pipeline\tests -v` (하위 폴더에 `__init__.py` 필요) |
 | 층별 테스트 | `python -m unittest discover -s .\02_pipeline\tests\silver -v` |
 | Databricks 실행 | 노트북은 Git folder 동기화 후 Databricks에서 실행 (사용자 확인) |

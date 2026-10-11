@@ -1,0 +1,83 @@
+{
+  "scenarios": [
+    {"id": "S01", "title": "정상 구매", "start_kst": "2026-10-12T10:00:00+09:00", "orders": [
+      {"order_no": 1, "user_id": "U01",
+       "items": [{"sku": "SKU-004", "quantity": 1, "discount": 0}],
+       "events": [
+         {"type": "ORDER_CREATED", "offset_sec": 0},
+         {"type": "PAYMENT_SUCCEEDED", "offset_sec": 30, "method": "CARD"}]}]},
+
+    {"id": "S02", "title": "배송비 부과와 경계", "start_kst": "2026-10-12T10:10:00+09:00", "orders": [
+      {"order_no": 1, "user_id": "U02",
+       "items": [{"sku": "SKU-013", "quantity": 1, "discount": 0}],
+       "events": [
+         {"type": "ORDER_CREATED", "offset_sec": 0},
+         {"type": "PAYMENT_SUCCEEDED", "offset_sec": 30, "method": "EASY_PAY"}]},
+      {"order_no": 2, "user_id": "U02", "start_offset_sec": 300,
+       "items": [{"sku": "SKU-013", "quantity": 1, "discount": 0},
+                 {"sku": "SKU-014", "quantity": 1, "discount": 0}],
+       "events": [
+         {"type": "ORDER_CREATED", "offset_sec": 0},
+         {"type": "PAYMENT_SUCCEEDED", "offset_sec": 30, "method": "CARD"}]}]},
+
+    {"id": "S04", "title": "다중 상품·수량·할인", "start_kst": "2026-10-12T10:20:00+09:00", "orders": [
+      {"order_no": 1, "user_id": "U03",
+       "items": [{"sku": "SKU-001", "quantity": 2, "discount": 5000},
+                 {"sku": "SKU-010", "quantity": 1, "discount": 0}],
+       "events": [
+         {"type": "ORDER_CREATED", "offset_sec": 0},
+         {"type": "PAYMENT_SUCCEEDED", "offset_sec": 30, "method": "CARD"}]}]},
+
+    {"id": "S06", "title": "결제 실패 후 재시도 성공", "start_kst": "2026-10-12T10:30:00+09:00", "orders": [
+      {"order_no": 1, "user_id": "U04",
+       "items": [{"sku": "SKU-007", "quantity": 1, "discount": 0}],
+       "events": [
+         {"type": "ORDER_CREATED", "offset_sec": 0},
+         {"type": "PAYMENT_FAILED", "offset_sec": 20, "method": "CARD", "fail_reason": "LIMIT_EXCEEDED"},
+         {"type": "PAYMENT_SUCCEEDED", "offset_sec": 50, "method": "EASY_PAY"}]}]},
+
+    {"id": "S08", "title": "결제 전 주문 취소", "start_kst": "2026-10-12T10:40:00+09:00", "orders": [
+      {"order_no": 1, "user_id": "U05",
+       "items": [{"sku": "SKU-014", "quantity": 1, "discount": 0}],
+       "events": [
+         {"type": "ORDER_CREATED", "offset_sec": 0},
+         {"type": "ORDER_CANCELLED", "offset_sec": 30, "reason": "CHANGE_OF_MIND"}]}]},
+
+    {"id": "S09", "title": "수량 일부 환불", "start_kst": "2026-10-12T10:50:00+09:00", "orders": [
+      {"order_no": 1, "user_id": "U06",
+       "items": [{"sku": "SKU-010", "quantity": 2, "discount": 0}],
+       "events": [
+         {"type": "ORDER_CREATED", "offset_sec": 0},
+         {"type": "PAYMENT_SUCCEEDED", "offset_sec": 30, "method": "CARD"},
+         {"type": "REFUND_SUCCEEDED", "offset_sec": 630, "item": 1, "quantity": 1,
+          "refund_type": "RETURN", "reason": "DEFECT"}]}]},
+
+    {"id": "S19", "title": "중복 이벤트", "start_kst": "2026-10-12T11:00:00+09:00", "orders": [
+      {"order_no": 1, "user_id": "U07",
+       "items": [{"sku": "SKU-001", "quantity": 1, "discount": 0}],
+       "events": [
+         {"type": "ORDER_CREATED", "offset_sec": 0},
+         {"type": "PAYMENT_SUCCEEDED", "offset_sec": 30, "method": "BANK_TRANSFER", "send_count": 2}]}]},
+
+    {"id": "S21", "title": "검증 실패 격리", "start_kst": "2026-10-12T11:10:00+09:00", "orders": [
+      {"order_no": 1, "user_id": "U01",
+       "items": [{"sku": "SKU-001", "quantity": 1, "discount": 0}],
+       "events": [
+         {"type": "PAYMENT_SUCCEEDED", "offset_sec": 0, "method": "CARD", "fault": "MISSING_REQUIRED"}]},
+      {"order_no": 2, "user_id": "U01",
+       "items": [{"sku": "SKU-001", "quantity": 1, "discount": 0}],
+       "events": [
+         {"type": "ORDER_CREATED", "offset_sec": 0, "fault": "INVALID_TYPE"}]},
+      {"order_no": 3, "user_id": "U01",
+       "items": [{"sku": "SKU-001", "quantity": 1, "discount": 0}],
+       "events": [
+         {"type": "ORDER_CREATED", "offset_sec": 0, "fault": "UNKNOWN_EVENT_TYPE"}]}]},
+
+    {"id": "S23", "title": "자정 경계 (UTC → KST)", "start_kst": "2026-10-12T00:29:30+09:00", "orders": [
+      {"order_no": 1, "user_id": "U01",
+       "items": [{"sku": "SKU-007", "quantity": 1, "discount": 0}],
+       "events": [
+         {"type": "ORDER_CREATED", "offset_sec": 0},
+         {"type": "PAYMENT_SUCCEEDED", "offset_sec": 30, "method": "VIRTUAL_ACCOUNT"}]}]}
+  ]
+}

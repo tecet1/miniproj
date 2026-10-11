@@ -1,0 +1,19 @@
+{
+  "skus": [
+    {"product_id": "SKU-001", "product_name": "기능성 티셔츠", "category": "의류", "unit_price": 29000},
+    {"product_id": "SKU-002", "product_name": "바람막이 재킷", "category": "의류", "unit_price": 79000},
+    {"product_id": "SKU-003", "product_name": "등산 바지", "category": "의류", "unit_price": 59000},
+    {"product_id": "SKU-004", "product_name": "러닝화", "category": "신발", "unit_price": 89000},
+    {"product_id": "SKU-005", "product_name": "트레킹화", "category": "신발", "unit_price": 129000},
+    {"product_id": "SKU-006", "product_name": "슬리퍼", "category": "신발", "unit_price": 25000},
+    {"product_id": "SKU-007", "product_name": "백팩 20L", "category": "가방", "unit_price": 59000},
+    {"product_id": "SKU-008", "product_name": "크로스백", "category": "가방", "unit_price": 39000},
+    {"product_id": "SKU-009", "product_name": "힙색", "category": "가방", "unit_price": 19000},
+    {"product_id": "SKU-010", "product_name": "캠핑 랜턴", "category": "캠핑·등산 장비", "unit_price": 35000},
+    {"product_id": "SKU-011", "product_name": "등산 스틱", "category": "캠핑·등산 장비", "unit_price": 45000},
+    {"product_id": "SKU-012", "product_name": "접이식 의자", "category": "캠핑·등산 장비", "unit_price": 49000},
+    {"product_id": "SKU-013", "product_name": "스포츠 양말", "category": "액세서리", "unit_price": 8000},
+    {"product_id": "SKU-014", "product_name": "등산 장갑", "category": "액세서리", "unit_price": 12000},
+    {"product_id": "SKU-015", "product_name": "헤드밴드", "category": "액세서리", "unit_price": 9000}
+  ]
+}
