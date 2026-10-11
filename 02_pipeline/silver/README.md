@@ -75,3 +75,21 @@ RUN_SPARK_TESTS=1을 설정하고 PySpark와 지원 Java가 있는 환경에서 
 - **추가:** evidence/local_validation_2026-10-12.json에 환경·검증 범위·남은 원격 검증을 기록했다.
 
 Windows/Python 3.12의 worker 종료 후 기존 Python 3.11.2 + PySpark 3.5.3 + Java 8로 로컬 Spark 검사를 수행했다. 이는 Databricks 컴퓨트의 Python 버전을 바꾸라는 의미가 아니다. Delta 저장과 원격 노트북 실행은 아직 미검증이다.
+
+## 테이블 생성 옵션 오류 수정
+
+- **변경:** `mode("errorifexists").saveAsTable(...)`에서 **`writeTo(...).using("delta").create()`**로 초기 생성 API를 바꿨다.
+- **추가:** 실제 환경의 `[UNSUPPORTED_OPERATION] errorifexists is not supported` 보고를 반영했다. 수정 후 원격 실행 결과는 아직 확인하지 않았다.
+
+`writeTo(table)`은 대상 테이블, `using("delta")`는 저장 형식, `create()`는 신규 생성이다. 기존 대상은 `tableExists` 분기에서 생성 호출을 건너뛰고 명시적 스키마와 비교한다. 검증 노트북의 새 실행별 Bronze도 같은 생성 API를 사용한다. MERGE와 availableNow는 이 변경의 대상이 아니다.
+
+GitHub에 변경을 반영하고 Databricks Git 폴더에서 Pull한다. 실행 중인 Silver 쿼리가 있다면 먼저 중지한다. `importlib.reload(pipeline)`로 모듈을 다시 불러온 뒤 테이블 설정 셀부터 재실행한다.
+
+참고: [Databricks DataFrameWriterV2](https://learn.microsoft.com/en-us/azure/databricks/pyspark/reference/classes/dataframewriterv2).
+
+## 프로덕션 전환 시 재설계 방향
+
+- **추가:** 사용자 피드백: 현재 가독성과 노트북별 경로/옵션 수동 설정의 부담이 크다. 지금은 PoC 완료를 우선한다.
+- **추가:** 프로덕션 전환 시 환경 설정의 단일화, 실행/배포 자동화, 변환·검증·저장 책임과 명시적인 입출력 구조를 재설계한다.
+
+현재 코드의 파일 배치를 프로덕션 구조로 고정하지 않는다. 데이터 계약·독립 기대 결과·검증된 순수 변환 규칙은 새 구현의 정확성을 검증하는 기준으로 유지한다. 프로덕션용 전면 재설계는 PoC 완료 후 실제 운영 요구에 맞춰 진행한다.

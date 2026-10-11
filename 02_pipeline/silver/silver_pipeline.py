@@ -133,7 +133,7 @@ def create_tables(spark, silver_table: str, quarantine_table: str) -> None:
     """Create absent targets without truncating or migrating existing tables."""
     for table, schema in [(silver_table, SILVER_SCHEMA), (quarantine_table, QUARANTINE_SCHEMA)]:
         if not spark.catalog.tableExists(table):
-            spark.createDataFrame([], schema).write.format("delta").mode("errorifexists").saveAsTable(table)
+            spark.createDataFrame([], schema).writeTo(table).using("delta").create()
         actual = spark.table(table).schema
         expected_types = {field.name: field.dataType for field in schema}
         actual_types = {field.name: field.dataType for field in actual}
