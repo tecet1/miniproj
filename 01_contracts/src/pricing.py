@@ -9,12 +9,11 @@ def item_amounts(unit_price: int, quantity: int, discount: int) -> tuple[int, in
 
     gross = 단가 x 수량 (할인 전), paid = gross - 할인
     """
-    raise NotImplementedError
-
+    return unit_price * quantity, unit_price * quantity - discount
 
 def shipping_fee(paid_total: int) -> int:
     """한 주문의 item_paid_amount 합계로 배송비를 정한다. 20,000 이상 0, 미만 4,000."""
-    raise NotImplementedError
+    return 0 if paid_total >= FREE_SHIPPING_THRESHOLD else SHIPPING_FEE
 
 
 def refund_amount(paid: int, quantity: int, refund_quantity: int) -> int:
@@ -22,4 +21,4 @@ def refund_amount(paid: int, quantity: int, refund_quantity: int) -> int:
 
     예: paid 70,000, 수량 2, 환불수량 1 -> 35,000
     """
-    raise NotImplementedError
+    return paid * refund_quantity // quantity
