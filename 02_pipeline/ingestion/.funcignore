@@ -1,0 +1,10 @@
+local.settings.json
+.venv/
+.python_packages/
+__pycache__/
+*.pyc
+.git/
+.env
+.env.*
+send_http_events.py
+README.md

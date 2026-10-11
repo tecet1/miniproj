@@ -1,0 +1,47 @@
+name: Deploy channel A Function
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "02_pipeline/ingestion/**"
+      - ".github/workflows/deploy-function.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-channel-a-function
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Run local tests
+        run: python -m unittest discover -s 02_pipeline/tests -v
+
+      - name: Login to Azure
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy existing Function App
+        uses: Azure/functions-action@v1
+        with:
+          app-name: AF-ingestion-demo-krc-swlee
+          package: "02_pipeline/ingestion"
+          respect-funcignore: true
+          remote-build: true
