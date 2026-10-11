@@ -6,17 +6,19 @@
 ## 송신과 처리 경로
 
 - **추가: 송신 경로와 원본 데이터 계약을 구분한다.**
-- **추가: 현재 직접 Event Hubs 송신과 최종 Functions 경유 경로의 검증 상태를 별도로 기록한다.**
+- **변경: 기존 Function App을 사용해 HTTP → Event Hubs → Bronze 경로를 먼저 확인한다.**
 
 | 채널 | 예정 경로 | 현재 상태 |
 |---|---|---|
-| A | HTTP → Functions → Event Hubs → Bronze | 고정 v1/v2 입력만 생성. 다음 단계는 Event Hubs 직접 송신. Functions 검증은 별도. |
+| A | HTTP → Functions → Event Hubs → Bronze | **변경: 고정 v1/v2 입력·HTTP 송신기·Function 수정본 준비. Azure 배포/송신/적재는 미검증.** |
 | B | Timer 기반 수집 → Functions → Event Hubs → Bronze | 최소 원본 필드·주기·메시지 단위 미확정 |
 | C | 파일 전달 → ADLS Landing → Auto Loader → Bronze | 최소 파일 구조·경로·완료 표시 방식 미확정 |
 
 공식 쇼핑몰 API 연결을 구현한 것으로 표현하지 않는다. B/C의 수집 방식은 역할 배치이며 실제 구현 시 계약을 확정한다. 어느 채널도 수집 누락 대사·Backfill을 기본 범위에 추가하지 않는다.
 
 A의 송신 본문은 events.jsonl 또는 events_v2.jsonl의 한 줄이다. UTF-8 JSON 객체 하나가 하나의 메시지다. 재전송할 때 같은 event_id를 유지한다. 6개를 한 JSON 배열로 감싸 보내지 않는다. 순서대로 송신하더라도 수신·처리 순서를 업무 시각으로 가정하지 않는다.
+
+**추가: 테스트 송신기는 선택적 전송 메타데이터 test_run_id(실행 식별자)와 published_at(UTC 송신 직전 시각)을 헤더에 추가한다. 원본 업무 필드·event_id·계약 버전은 유지한다. Bronze는 이를 원문에 보존하며 공통 Silver 업무 값에는 포함하지 않는다. 실행 ID는 이벤트 중복 키가 아니다.**
 
 Bronze는 JSON 전체와 source_event_hub·partition·offset·broker_timestamp·bronze_ingested_at을 보관한다. 향후 C 경로에는 source_file 등 파일 출처를 보관한다.
 

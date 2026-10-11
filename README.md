@@ -23,7 +23,7 @@ miniproj/
 │   ├── src/                    # 고정 원본 생성
 │   └── data/                   # 입력·기대 행·SKU 매핑·상품 변경 이력
 ├── 02_pipeline/
-│   ├── ingestion/              # 송신·수집: 다음 구현
+│   ├── ingestion/              # 송신·수집: 코드 준비, 원격 확인 필요
 │   ├── bronze/                 # 원문 적재: 원격 확인 필요
 │   ├── silver/                 # A v1/v2 → 공통 이벤트
 │   ├── gold/                   # 상품 SCD2·시점 조회·Delta 저장 함수
@@ -52,6 +52,6 @@ python -m unittest discover -s .\02_pipeline\tests -v
 
 로컬 정상 변환·자료형·미매핑·SCD 재생·유효기간 경계·충돌을 테스트한다. 단일 Silver 테이블의 Spark schema·Quarantine·배치 간 멱등 저장과 원격 Delta 실행은 미구현 또는 미검증이며, 로컬 테스트로 완료 처리하지 않는다.
 
-다음 작업은 A 입력을 Event Hubs에 메시지별 송신하고 기존 Bronze 노트북으로 확인하는 것이다. Functions 경유 검증은 직접 Event Hubs 송신과 구분한다.
+**변경: A HTTP 송신기·Function 원본 키 수정본·일반 컴퓨트용 Bronze 스트리밍 노트북을 준비했다. 다음 작업은 Function 수정 배포 후 HTTP → Event Hubs → Bronze 경로를 직접 확인하는 것이다. Azure 원격 성공은 아직 확인하지 않았다.**
 
 Linear의 기존 SCD 제외 문구·보일러플레이트 협업 문구보다 최신 사용자 승인과 AGENTS.md를 우선한다. 이번 반영 대상은 로컬 miniproj다.
