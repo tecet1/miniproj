@@ -1,0 +1,5 @@
+[
+  {"sku_id": "SKU-001", "product_name": "데모 재킷", "category": "의류", "brand": "DEMO", "effective_from": "2026-10-01T00:00:00Z"},
+  {"sku_id": "SKU-001", "product_name": "데모 재킷", "category": "아웃도어", "brand": "DEMO", "effective_from": "2026-10-11T00:00:00Z"},
+  {"sku_id": "SKU-002", "product_name": "데모 팬츠", "category": "의류", "brand": "DEMO", "effective_from": "2026-10-01T00:00:00Z"}
+]
