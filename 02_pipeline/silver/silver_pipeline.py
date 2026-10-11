@@ -129,11 +129,21 @@ def prepare_writes(normalized: DataFrame, existing: DataFrame):
     return silver, quarantine
 
 
+def create_delta_table(spark, table: str, schema: StructType, *, if_not_exists: bool = False) -> None:
+    """Explicit SQL DDL avoids writer save modes; existing data is never replaced."""
+    table_sql = ".".join("`" + part.replace("`", "``") + "`" for part in table.split("."))
+    columns = ", ".join(
+        "`" + field.name.replace("`", "``") + "` " + field.dataType.simpleString()
+        for field in schema
+    )
+    clause = "IF NOT EXISTS " if if_not_exists else ""
+    spark.sql(f"CREATE TABLE {clause}{table_sql} ({columns}) USING DELTA")
+
+
 def create_tables(spark, silver_table: str, quarantine_table: str) -> None:
     """Create absent targets without truncating or migrating existing tables."""
     for table, schema in [(silver_table, SILVER_SCHEMA), (quarantine_table, QUARANTINE_SCHEMA)]:
-        if not spark.catalog.tableExists(table):
-            spark.createDataFrame([], schema).writeTo(table).using("delta").create()
+        create_delta_table(spark, table, schema, if_not_exists=True)
         actual = spark.table(table).schema
         expected_types = {field.name: field.dataType for field in schema}
         actual_types = {field.name: field.dataType for field in actual}

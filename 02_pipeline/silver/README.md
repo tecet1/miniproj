@@ -76,7 +76,7 @@ RUN_SPARK_TESTS=1을 설정하고 PySpark와 지원 Java가 있는 환경에서 
 
 Windows/Python 3.12의 worker 종료 후 기존 Python 3.11.2 + PySpark 3.5.3 + Java 8로 로컬 Spark 검사를 수행했다. 이는 Databricks 컴퓨트의 Python 버전을 바꾸라는 의미가 아니다. Delta 저장과 원격 노트북 실행은 아직 미검증이다.
 
-## 테이블 생성 옵션 오류 수정
+## 이전 생성 옵션 수정 기록 — 아래 SQL DDL로 대체
 
 - **변경:** `mode("errorifexists").saveAsTable(...)`에서 **`writeTo(...).using("delta").create()`**로 초기 생성 API를 바꿨다.
 - **추가:** 실제 환경의 `[UNSUPPORTED_OPERATION] errorifexists is not supported` 보고를 반영했다. 수정 후 원격 실행 결과는 아직 확인하지 않았다.
@@ -93,3 +93,16 @@ GitHub에 변경을 반영하고 Databricks Git 폴더에서 Pull한다. 실행 
 - **추가:** 프로덕션 전환 시 환경 설정의 단일화, 실행/배포 자동화, 변환·검증·저장 책임과 명시적인 입출력 구조를 재설계한다.
 
 현재 코드의 파일 배치를 프로덕션 구조로 고정하지 않는다. 데이터 계약·독립 기대 결과·검증된 순수 변환 규칙은 새 구현의 정확성을 검증하는 기준으로 유지한다. 프로덕션용 전면 재설계는 PoC 완료 후 실제 운영 요구에 맞춰 진행한다.
+
+## 생성 오류 재발에 따른 SQL DDL 전환
+
+- **변경:** 앞선 `writeTo(...).create()` 교체 후 같은 오류가 보고되어 **명시적 `CREATE TABLE ... USING DELTA`**로 초기 생성을 전환했다.
+- **추가:** 노트북 첫 설정 셀에서 모듈을 자동 reload하고 로드 경로와 SQL_DDL 방식을 출력한다. 실행 중인 Silver 쿼리는 먼저 중지해야 한다.
+
+같은 오류의 원인이 캐시된 구버전인지 V2 writer 내부 경로인지는 전체 traceback 없이 확정하지 않는다. 생성 함수는 StructType의 simpleString으로 컬럼 타입을 작성한다. Silver/Quarantine에는 IF NOT EXISTS를 사용하고 기존 스키마를 계속 검증한다. 테스트용 Bronze는 신규 SQL 생성 후 append한다.
+
+Git 변경을 Pull한 뒤 첫 설정 셀부터 실행하면 reload가 적용된다. 로컬 코드 검증과 실제 Databricks SQL/Delta 실행 성공은 구분한다.
+
+참고: [CREATE TABLE USING](https://learn.microsoft.com/en-us/azure/databricks/sql/language-manual/sql-ref-syntax-ddl-create-table-using).
+
+**추가 검증:** 수정 후 기본 Python 검사 24개와 Silver/Quarantine/테스트 Bronze 생성문 3개의 로컬 Spark SQL 파싱을 통과했다. SQL 파싱은 실제 Delta 테이블 생성이나 Databricks 실행 성공을 의미하지 않는다.
