@@ -10,9 +10,9 @@
 
 | 폴더 | 기능 / 상태 |
 |---|---|
-| ingestion | A JSONL 송신: 미구현 |
-| bronze | 기존 원격 Event Hubs→Bronze 경로: 새 입력 재검증 필요 |
-| silver | 채널 A v1/v2 순수 변환: 로컬 검증 |
+| ingestion | ~~A JSONL 송신: 미구현~~ **변경: 송신기·Function·GitHub 배포 준비 및 v1 실제 송신 확인** |
+| bronze | ~~새 입력 재검증 필요~~ **변경: 새 v1 원문 6건 적재 확인, 체크포인트 재시작 증거는 남음** |
+| silver | **변경: v1/v2 변환·Spark 타입·Quarantine·멱등 저장·노트북 준비. 원격 실행 미확인** |
 | gold | 전체 상품 변경 이력 기반 SCD2·시점 조회: 로컬 검증. Delta 저장 함수 원격 미검증 |
 | tests | 독립 기대 행·버전 오류·상품 변경·경계·재실행·충돌 검사 |
 

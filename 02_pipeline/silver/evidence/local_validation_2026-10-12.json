@@ -1,0 +1,41 @@
+{
+  "recorded_date": "2026-10-12",
+  "provenance": "Codex local unittest runner output; not Azure/Databricks execution",
+  "python_unit": {
+    "python": "3.12.10",
+    "passed": 24,
+    "spark_tests_skipped_in_default_run": 6
+  },
+  "spark_dataframe": {
+    "python": "3.11.2",
+    "java": "1.8.0_461",
+    "pyspark": "3.5.3",
+    "master": "local[2]",
+    "passed": 6,
+    "duration_seconds": 528.646,
+    "scope": [
+      "typed common values",
+      "array grain",
+      "16 error cases",
+      "new/existing key conflict",
+      "v1/v2 equivalence",
+      "error replay identity"
+    ]
+  },
+  "notebooks": {
+    "format_valid": true,
+    "code_cell_syntax_valid": true,
+    "executed_in_databricks": false
+  },
+  "pending": [
+    "Delta MERGE execution",
+    "foreachBatch execution",
+    "partial-write retry with real Delta targets",
+    "same checkpoint restart",
+    "actual Bronze to Silver execution"
+  ],
+  "limitations": [
+    "Local Windows Python 3.12 Spark worker exited; local Spark checks passed using existing Python 3.11.",
+    "No throughput or latency claim follows from local test duration."
+  ]
+}

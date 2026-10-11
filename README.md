@@ -50,8 +50,8 @@ python -m unittest discover -s .\02_pipeline\tests -v
 
 상품 SCD는 product_name·category·brand를 추적한다. 변경 전 행을 보존하고 유효기간과 안정적인 product_key를 만든다. 10월 10일 SKU-001 거래는 '의류', 변경 이후 거래는 '아웃도어'로 조회된다. 전체 상품 변경 이력을 제공해야 한다.
 
-로컬 정상 변환·자료형·미매핑·SCD 재생·유효기간 경계·충돌을 테스트한다. 단일 Silver 테이블의 Spark schema·Quarantine·배치 간 멱등 저장과 원격 Delta 실행은 미구현 또는 미검증이며, 로컬 테스트로 완료 처리하지 않는다.
+로컬 정상 변환·자료형·미매핑·SCD 재생·유효기간 경계·충돌을 테스트한다. ~~단일 Silver 테이블의 Spark schema·Quarantine·배치 간 멱등 저장과 원격 Delta 실행은 미구현 또는 미검증~~ **변경: Spark schema·Quarantine·멱등 MERGE 코드와 실행/검증 노트북을 추가했다. 원격 Delta 실행은 미검증이며 로컬 검사로 완료 처리하지 않는다.**
 
-**변경: 사용자 공유 결과로 A의 HTTP → Event Hubs → Bronze 6건을 확인했다. 공유 원문을 로컬 변환한 결과도 독립 기대 공통 이벤트와 일치한다. 다음 작업은 명시적 Spark 공통 스키마·오류 격리·이벤트 ID 기준 멱등 Delta 저장이다. 실행 근거는 02_pipeline/bronze/evidence에 보관한다.**
+**변경: 사용자 공유 결과로 A의 HTTP → Event Hubs → Bronze 6건을 확인했다.** 공유 원문을 로컬 변환한 결과도 독립 기대 공통 이벤트와 일치한다. ~~다음 작업은 명시적 Spark 공통 스키마·오류 격리·이벤트 ID 기준 멱등 Delta 저장이다.~~ **변경: 해당 코드를 준비했다. 다음 작업은 별도 Databricks 테스트와 실제 Bronze→Silver 실행 결과 확인이다.** 실행 근거는 02_pipeline/bronze/evidence에 보관한다.
 
 Linear의 기존 SCD 제외 문구·보일러플레이트 협업 문구보다 최신 사용자 승인과 AGENTS.md를 우선한다. 이번 반영 대상은 로컬 miniproj다.

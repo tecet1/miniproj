@@ -63,4 +63,4 @@ python .\01_contracts\src\generate_channel_a.py --schema-version 2.0
 
 같은 메시지를 정확히 한 번 더 전달하면 정상적인 입력 전달 조건에서 Bronze 12행, Silver 고유 이벤트 6행을 기대한다. SDK의 추가 전달이 발생하면 Bronze는 더 많을 수 있다.
 
-현재 단계에는 필수값 누락·미매핑·파싱 오류 입력을 추가하지 않았다. Silver의 네 가지 검증 규칙을 구현할 때 필요한 오류 fixture만 추가한다.
+~~현재 단계에는 필수값 누락·미매핑·파싱 오류 입력을 추가하지 않았다.~~ **변경: quality_cases.json의 오류 16개, replay_events.jsonl의 v1/v2 재전송, conflict_events.jsonl의 키 충돌과 독립 quality_expected.json을 추가했다. data_quality.md에서 규칙·Quarantine 계약을 정의한다.**

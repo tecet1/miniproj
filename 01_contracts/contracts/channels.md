@@ -10,7 +10,7 @@
 
 | 채널 | 예정 경로 | 현재 상태 |
 |---|---|---|
-| A | HTTP → Functions → Event Hubs → Bronze | **변경: 고정 v1/v2 입력·HTTP 송신기·Function 수정본 준비. Azure 배포/송신/적재는 미검증.** |
+| A | HTTP → Functions → Event Hubs → Bronze | ~~Azure 배포/송신/적재는 미검증.~~ **변경: GitHub Actions 배포 성공·사용자 공유 결과의 v1 6건 Bronze 적재 확인. v2 원격 송신 및 Silver 실행은 미확인.** |
 | B | Timer 기반 수집 → Functions → Event Hubs → Bronze | 최소 원본 필드·주기·메시지 단위 미확정 |
 | C | 파일 전달 → ADLS Landing → Auto Loader → Bronze | 최소 파일 구조·경로·완료 표시 방식 미확정 |
 
@@ -34,7 +34,7 @@ Bronze는 JSON 전체와 source_event_hub·partition·offset·broker_timestamp·
 
 그 밖의 필드는 두 버전에서 같다. 원본은 서로 다른 JSON이지만 업무 내용이 같은 fixture이므로 event_id도 유지한다. 이벤트 ID의 a-poc-v1은 고정 시나리오 이름이며 원본 schema_version을 뜻하지 않는다.
 
-지원하지 않는 버전, 버전에 필요한 필드 누락, 잘못된 코드·시각·자료형, SKU 미매핑은 normalize_event에서 ValueError를 발생시킨다. 후속 Silver 저장 호출부는 원문과 오류 사유를 Quarantine에 저장해야 한다. 현재 모듈은 Quarantine 저장이나 배치 간 중복 제거를 구현하지 않았다.
+지원하지 않는 버전, 버전에 필요한 필드 누락, 잘못된 코드·시각·자료형, SKU 미매핑은 normalize_event에서 ValueError를 발생시킨다. 후속 Silver 저장 호출부는 원문과 오류 사유를 Quarantine에 저장해야 한다. ~~현재 모듈은 Quarantine 저장이나 배치 간 중복 제거를 구현하지 않았다.~~ **변경: silver_pipeline.py에 구조화된 오류·Quarantine·배치 간 멱등 저장 코드를 추가했다. 원격 실행 검증은 남아 있다.**
 
 ## A 원본 필드
 
@@ -48,7 +48,7 @@ Bronze는 JSON 전체와 source_event_hub·partition·offset·broker_timestamp·
 
 | A 원본 필드 | 공통 Silver 필드 / 규칙 |
 |---|---|
-| `schema_version` | 원본 버전 `1.0`. Silver 버전은 별도로 지정한다. |
+| `schema_version` | **변경: 원본 버전 `1.0`/`2.0`.** Silver 버전은 별도로 지정한다. |
 | `channel_id` | `A` |
 | `event_id` | 고정 이벤트 ID. 채널과 함께 중복 키로 사용한다. |
 | `event_name` | 소문자 유형 → 대문자 공통 `event_type` |

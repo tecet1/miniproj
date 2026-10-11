@@ -1,0 +1,98 @@
+[
+  {
+    "case_id": "missing_order_no",
+    "raw_payload": "{\"schema_version\": \"1.0\", \"channel_id\": \"A\", \"event_id\": \"a-invalid-missing_order_no\", \"event_name\": \"order_created\", \"occurred_at\": \"2026-10-10T03:00:00+00:00\", \"customer_no\": \"U-001\", \"payload\": {\"total\": 50000, \"items\": [{\"item_no\": \"A-001-1\", \"sku\": \"A-SKU-001\", \"qty\": 2, \"price\": 25000}]}}",
+    "rule_id": "DQ-02",
+    "error_code": "MISSING_OR_INVALID_FIELD"
+  },
+  {
+    "case_id": "invalid_timestamp",
+    "raw_payload": "{\"schema_version\": \"1.0\", \"channel_id\": \"A\", \"event_id\": \"a-invalid-invalid_timestamp\", \"event_name\": \"order_created\", \"occurred_at\": \"not-a-time\", \"order_no\": \"A-001\", \"customer_no\": \"U-001\", \"payload\": {\"total\": 50000, \"items\": [{\"item_no\": \"A-001-1\", \"sku\": \"A-SKU-001\", \"qty\": 2, \"price\": 25000}]}}",
+    "rule_id": "DQ-03",
+    "error_code": "INVALID_TIMESTAMP"
+  },
+  {
+    "case_id": "timezone_missing",
+    "raw_payload": "{\"schema_version\": \"1.0\", \"channel_id\": \"A\", \"event_id\": \"a-invalid-timezone_missing\", \"event_name\": \"order_created\", \"occurred_at\": \"2026-10-10T03:00:00\", \"order_no\": \"A-001\", \"customer_no\": \"U-001\", \"payload\": {\"total\": 50000, \"items\": [{\"item_no\": \"A-001-1\", \"sku\": \"A-SKU-001\", \"qty\": 2, \"price\": 25000}]}}",
+    "rule_id": "DQ-03",
+    "error_code": "TIMEZONE_REQUIRED"
+  },
+  {
+    "case_id": "boolean_quantity",
+    "raw_payload": "{\"schema_version\": \"1.0\", \"channel_id\": \"A\", \"event_id\": \"a-invalid-boolean_quantity\", \"event_name\": \"order_created\", \"occurred_at\": \"2026-10-10T03:00:00+00:00\", \"order_no\": \"A-001\", \"customer_no\": \"U-001\", \"payload\": {\"total\": 50000, \"items\": [{\"item_no\": \"A-001-1\", \"sku\": \"A-SKU-001\", \"qty\": true, \"price\": 25000}]}}",
+    "rule_id": "DQ-03",
+    "error_code": "INVALID_INTEGER"
+  },
+  {
+    "case_id": "unmapped_sku",
+    "raw_payload": "{\"schema_version\": \"1.0\", \"channel_id\": \"A\", \"event_id\": \"a-invalid-unmapped_sku\", \"event_name\": \"order_created\", \"occurred_at\": \"2026-10-10T03:00:00+00:00\", \"order_no\": \"A-001\", \"customer_no\": \"U-001\", \"payload\": {\"total\": 50000, \"items\": [{\"item_no\": \"A-001-1\", \"sku\": \"A-SKU-UNKNOWN\", \"qty\": 2, \"price\": 25000}]}}",
+    "rule_id": "DQ-04",
+    "error_code": "UNMAPPED_SKU"
+  },
+  {
+    "case_id": "unsupported_version",
+    "raw_payload": "{\"schema_version\": \"9.0\", \"channel_id\": \"A\", \"event_id\": \"a-invalid-unsupported_version\", \"event_name\": \"order_created\", \"occurred_at\": \"2026-10-10T03:00:00+00:00\", \"order_no\": \"A-001\", \"customer_no\": \"U-001\", \"payload\": {\"total\": 50000, \"items\": [{\"item_no\": \"A-001-1\", \"sku\": \"A-SKU-001\", \"qty\": 2, \"price\": 25000}]}}",
+    "rule_id": "DQ-04",
+    "error_code": "UNSUPPORTED_SCHEMA_VERSION"
+  },
+  {
+    "case_id": "unsupported_event",
+    "raw_payload": "{\"schema_version\": \"1.0\", \"channel_id\": \"A\", \"event_id\": \"a-invalid-unsupported_event\", \"event_name\": \"unknown\", \"occurred_at\": \"2026-10-10T03:00:00+00:00\", \"order_no\": \"A-001\", \"customer_no\": \"U-001\", \"payload\": {\"total\": 50000, \"items\": [{\"item_no\": \"A-001-1\", \"sku\": \"A-SKU-001\", \"qty\": 2, \"price\": 25000}]}}",
+    "rule_id": "DQ-03",
+    "error_code": "UNSUPPORTED_EVENT_TYPE"
+  },
+  {
+    "case_id": "empty_items",
+    "raw_payload": "{\"schema_version\": \"1.0\", \"channel_id\": \"A\", \"event_id\": \"a-invalid-empty_items\", \"event_name\": \"order_created\", \"occurred_at\": \"2026-10-10T03:00:00+00:00\", \"order_no\": \"A-001\", \"customer_no\": \"U-001\", \"payload\": {\"total\": 50000, \"items\": []}}",
+    "rule_id": "DQ-02",
+    "error_code": "MISSING_OR_INVALID_FIELD"
+  },
+  {
+    "case_id": "null_item",
+    "raw_payload": "{\"schema_version\": \"1.0\", \"channel_id\": \"A\", \"event_id\": \"a-invalid-null_item\", \"event_name\": \"order_created\", \"occurred_at\": \"2026-10-10T03:00:00+00:00\", \"order_no\": \"A-001\", \"customer_no\": \"U-001\", \"payload\": {\"total\": 50000, \"items\": [null]}}",
+    "rule_id": "DQ-02",
+    "error_code": "NULL_ITEM"
+  },
+  {
+    "case_id": "invalid_payload",
+    "raw_payload": "{\"schema_version\": \"1.0\", \"channel_id\": \"A\", \"event_id\": \"a-invalid-invalid_payload\", \"event_name\": \"order_created\", \"occurred_at\": \"2026-10-10T03:00:00+00:00\", \"order_no\": \"A-001\", \"customer_no\": \"U-001\", \"payload\": []}",
+    "rule_id": "DQ-03",
+    "error_code": "INVALID_PAYLOAD"
+  },
+  {
+    "case_id": "v2_missing_order_total",
+    "raw_payload": "{\"schema_version\": \"2.0\", \"channel_id\": \"A\", \"event_id\": \"a-invalid-v2_missing_order_total\", \"event_name\": \"order_created\", \"occurred_at\": \"2026-10-10T03:00:00+00:00\", \"order_no\": \"A-001\", \"customer_no\": \"U-001\", \"payload\": {\"total\": 50000, \"items\": [{\"item_no\": \"A-001-1\", \"sku\": \"A-SKU-001\", \"qty\": 2, \"price\": 25000}]}}",
+    "rule_id": "DQ-02",
+    "error_code": "MISSING_OR_INVALID_FIELD"
+  },
+  {
+    "case_id": "decimal_overflow",
+    "raw_payload": "{\"schema_version\": \"1.0\", \"channel_id\": \"A\", \"event_id\": \"a-invalid-decimal_overflow\", \"event_name\": \"order_created\", \"occurred_at\": \"2026-10-10T03:00:00+00:00\", \"order_no\": \"A-001\", \"customer_no\": \"U-001\", \"payload\": {\"total\": 1000000000000000000, \"items\": [{\"item_no\": \"A-001-1\", \"sku\": \"A-SKU-001\", \"qty\": 2, \"price\": 25000}]}}",
+    "rule_id": "DQ-03",
+    "error_code": "DECIMAL_OVERFLOW"
+  },
+  {
+    "case_id": "integer_overflow",
+    "raw_payload": "{\"schema_version\": \"1.0\", \"channel_id\": \"A\", \"event_id\": \"a-invalid-integer_overflow\", \"event_name\": \"order_created\", \"occurred_at\": \"2026-10-10T03:00:00+00:00\", \"order_no\": \"A-001\", \"customer_no\": \"U-001\", \"payload\": {\"total\": 50000, \"items\": [{\"item_no\": \"A-001-1\", \"sku\": \"A-SKU-001\", \"qty\": 2147483648, \"price\": 25000}]}}",
+    "rule_id": "DQ-03",
+    "error_code": "INTEGER_OVERFLOW"
+  },
+  {
+    "case_id": "malformed_json",
+    "raw_payload": "{\"channel_id\":\"A\",",
+    "rule_id": "DQ-03",
+    "error_code": "INVALID_JSON"
+  },
+  {
+    "case_id": "not_an_object",
+    "raw_payload": "[]",
+    "rule_id": "DQ-03",
+    "error_code": "INVALID_EVENT"
+  },
+  {
+    "case_id": "non_json_number",
+    "raw_payload": "{\"channel_id\":\"A\",\"amount\":NaN}",
+    "rule_id": "DQ-03",
+    "error_code": "INVALID_JSON"
+  }
+]

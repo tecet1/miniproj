@@ -19,7 +19,7 @@
 | uid | nullable String, 채널 내 고객 ID |
 | data | 이벤트별 아래 필드를 가진 구조 |
 
-로컬 변환 결과는 JSON 호환성을 위해 Timestamp를 UTC 문자열로, 정수 KRW 금액을 int로 표현한다. Spark 적재 시 Timestamp와 Decimal(18,0)을 명시해야 한다. 실제 단일 Silver Delta 테이블의 data StructType과 저장 코드는 아직 구현하지 않았다.
+로컬 변환 결과는 JSON 호환성을 위해 Timestamp를 UTC 문자열로, 정수 KRW 금액을 int로 표현한다. Spark 적재 시 Timestamp와 Decimal(18,0)을 명시해야 한다. ~~실제 단일 Silver Delta 테이블의 data StructType과 저장 코드는 아직 구현하지 않았다.~~ **변경: silver_pipeline.py에 명시적 공통 StructType과 insert-only 저장 코드를 추가했다. 실제 Databricks 적재 성공은 아직 미확인이다.**
 
 ## 이벤트 payload
 
@@ -37,3 +37,10 @@
 같은 업무 이벤트의 구·신 형식이 동일한 공통 값으로 변환되면 중복으로 취급한다. 공통 업무 값이 다르면 충돌로 취급한다. 원문과 원본 schema_version은 Bronze에서 보존한다. 형식 버전이 바뀌었다는 이유만으로 별도 event_id를 발행하지 않는다.
 
 상품 마스터의 SCD2는 Silver 이벤트의 schema_version 변경이 아니다. Gold의 SKU와 거래 시각으로 상품 버전을 찾아 fact에 product_key를 보관하는 방향으로 연결한다.
+
+## 물리 저장과 처리 메타데이터
+
+- **추가:** 단일 data struct와 items struct는 다섯 이벤트 필드의 합집합이다.
+- **추가:** 해당 event_type에서 사용하지 않는 필드는 null이며 필수값은 변환 단계에서 검증한다.
+
+공통 업무 필드 외에 business_hash, source_event_hub, partition, offset, broker_timestamp, bronze_ingested_at, silver_processed_at을 저장한다. 업무 해시는 공통 업무 필드만 포함한다. 원문은 Bronze에 보관하며 Quarantine에는 실패 원문을 함께 저장한다. 타깃 스키마 변경은 원본 버전 처리와 별도로 검토하며 자동 스키마 확장은 사용하지 않는다.
