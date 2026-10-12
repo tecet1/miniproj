@@ -2,7 +2,7 @@
 
 필드 매핑은 이벤트 명세 2.2절, 코드 값은 2.3절을 따른다.
 """
-from timeutil import to_iso_utc  # noqa: F401
+from timeutil import to_iso_utc
 
 CHANNEL = "A"
 
@@ -21,10 +21,34 @@ UNKNOWN_EVENT_CODE = "shipping.started"   # 매핑표에 없는 이벤트 코드
 
 
 def to_raw(event: dict) -> dict:
-    """중립 이벤트 하나를 A 원본 dict로 바꾼다.
+    """중립 이벤트 하나를 A 원본 dict로 바꾼다."""
+    event_type = event["event_type"]
+    raw = {
+        "event_id": event["event_id"],
+        "event_type": EVENT_CODES[event_type],
+        "occurred_at": to_iso_utc(event["event_time"]),
+        "order_id": event["order_id"],
+        "user_id": event["user_id"],            # 비로그인이면 None -> JSON null
+    }
+    if event_type == "ORDER_CREATED":
+        raw["shipping_fee"] = event["shipping_fee"]
+        raw["items"] = [_item_to_raw(item) for item in event["items"]]
+    elif event_type == "ORDER_CANCELLED":
+        raw["reason"] = REASONS[event["cancel_reason_code"]]
+    elif event_type in ("PAYMENT_SUCCEEDED", "PAYMENT_FAILED"):
+        raw.update(payment_id=event["payment_id"], method=METHODS[event["payment_method"]],
+                   amount=event["payment_amount"])
+        if event_type == "PAYMENT_FAILED":
+            raw["failure_reason"] = FAIL_REASONS[event["fail_reason_code"]]
+    else:  # REFUND_SUCCEEDED
+        raw.update(refund_id=event["refund_id"], payment_id=event["payment_id"],
+                   order_item_id=event["order_item_id"], amount=event["refund_amount"],
+                   type=REFUND_TYPES[event["refund_type"]], reason=REASONS[event["refund_reason_code"]])
+    return raw
 
-    공통: event_id, event_type(코드 변환), occurred_at, order_id, user_id(비로그인이면 None -> null)
-    유형별 필드명은 test_channel_a.py 의 기대 dict를 보면 가장 빠르게 알 수 있다.
-    주의: 결제 성공에는 failure_reason 키를 넣지 않는다.
-    """
-    raise NotImplementedError
+
+def _item_to_raw(item: dict) -> dict:
+    return {"order_item_id": item["order_item_id"], "sku": item["product_id"],
+            "product_name": item["product_name"], "category": item["category"],
+            "quantity": item["quantity"], "unit_price": item["unit_price"],
+            "discount_amount": item["item_discount"]}

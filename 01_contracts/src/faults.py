@@ -1,4 +1,5 @@
 """S21 오류 주입. 채널 원본 dict에 '검증 실패' 조건을 만든다. 채널마다 필드 위치가 달라 경로 표를 받아서 일한다."""
+import copy
 
 
 def apply_fault(raw: dict, fault: str, paths: dict, unknown_code: str) -> dict:
@@ -9,7 +10,25 @@ def apply_fault(raw: dict, fault: str, paths: dict, unknown_code: str) -> dict:
       INVALID_TYPE       paths["quantity"] 위치의 값을 숫자가 아닌 문자열("N/A")로 교체
       UNKNOWN_EVENT_TYPE paths["event_code"] 위치의 값을 unknown_code로 교체
     그 외 이름이면 ValueError.
-
-    힌트: copy.deepcopy, 경로 튜플을 따라 마지막 직전까지 내려가는 작은 보조 함수
     """
-    raise NotImplementedError
+    result = copy.deepcopy(raw)
+    if fault == "MISSING_REQUIRED":
+        container, key = _locate(result, paths["payment_amount"])
+        del container[key]
+    elif fault == "INVALID_TYPE":
+        container, key = _locate(result, paths["quantity"])
+        container[key] = "N/A"
+    elif fault == "UNKNOWN_EVENT_TYPE":
+        container, key = _locate(result, paths["event_code"])
+        container[key] = unknown_code
+    else:
+        raise ValueError(f"unknown fault: {fault}")
+    return result
+
+
+def _locate(raw: dict, path: tuple):
+    """경로 튜플을 따라 내려가 (마지막 키를 담은 컨테이너, 마지막 키)를 돌려준다."""
+    container = raw
+    for key in path[:-1]:
+        container = container[key]
+    return container, path[-1]

@@ -14,20 +14,88 @@
     REFUND_SUCCEEDED  refund_id, payment_id, order_item_id, refund_quantity, refund_amount,
                       refund_type, refund_reason_code
 """
-import pricing  # noqa: F401  (구현 시 사용)
+from datetime import datetime, timedelta, timezone
+
+import pricing
 
 
 def build_events(scenario: dict, skus: dict[str, dict], channel: str) -> list[dict]:
-    """scenario의 모든 주문을 발생 순서대로 중립 이벤트로 만든다.
+    """scenario의 모든 주문을 발생 순서대로 중립 이벤트로 만든다."""
+    scenario_start = datetime.fromisoformat(scenario["start_kst"])
+    events = []
+    for order in scenario["orders"]:
+        order_id = f"{channel}-{scenario['id']}-{order['order_no']}"
+        order_start = scenario_start + timedelta(seconds=order.get("start_offset_sec", 0))
+        events += _build_order_events(order, order_id, order_start, skus)
+    return events
 
-    구현 순서 힌트
-    1. 시작 시각: datetime.fromisoformat(scenario["start_kst"]) 에 주문의 start_offset_sec(기본 0)을 더한다.
-    2. 주문 ID: f"{channel}-{scenario['id']}-{order['order_no']}"
-    3. 상품 행 만들기: order_item_id = f"{order_id}-{순번}", 단가·상품명·카테고리는 skus에서 가져온다.
-    4. 배송비: pricing.shipping_fee(상품 paid 합계). 결제금액 = paid 합계 + 배송비.
-    5. 이벤트마다: event_id = f"{order_id}-E{n}", 시각 = 주문 시작 + offset_sec (UTC로 변환).
-    6. 결제 이벤트는 결제 시도 번호를 센다(P1, P2 ...). 환불 이벤트는 같은 주문의 성공 결제를 가리킨다.
-    7. 환불 금액은 pricing.refund_amount로 계산한다. R1, R2 ... 번호를 센다.
-    8. fault, send_count는 시나리오 이벤트에 있으면 그대로 옮긴다.
-    """
-    raise NotImplementedError
+
+def _build_items(order: dict, order_id: str, skus: dict[str, dict]) -> tuple[list[dict], list[int]]:
+    """주문 상품 행 목록과, 행별 할인 후 금액(item_paid_amount) 목록을 함께 돌려준다."""
+    items, paid_amounts = [], []
+    for seq, line in enumerate(order["items"], start=1):
+        sku = skus[line["sku"]]
+        _, paid = pricing.item_amounts(sku["unit_price"], line["quantity"], line["discount"])
+        items.append({
+            "order_item_id": f"{order_id}-{seq}",
+            "product_id": sku["product_id"],
+            "product_name": sku["product_name"],
+            "category": sku["category"],
+            "quantity": line["quantity"],
+            "unit_price": sku["unit_price"],
+            "item_discount": line["discount"],
+        })
+        paid_amounts.append(paid)
+    return items, paid_amounts
+
+
+def _build_order_events(order: dict, order_id: str, order_start: datetime,
+                        skus: dict[str, dict]) -> list[dict]:
+    """주문 하나의 이벤트를 만든다. 번호(E, P, R)와 성공 결제 ID를 세면서 순서대로 처리한다."""
+    items, paid_amounts = _build_items(order, order_id, skus)
+    shipping = pricing.shipping_fee(sum(paid_amounts))
+    payment_amount = sum(paid_amounts) + shipping
+
+    events = []
+    payment_no = refund_no = 0
+    succeeded_payment_id = None
+    for event_no, spec in enumerate(order["events"], start=1):
+        event_time = order_start + timedelta(seconds=spec["offset_sec"])
+        event = {
+            "event_id": f"{order_id}-E{event_no}",
+            "event_type": spec["type"],
+            "order_id": order_id,
+            "user_id": order["user_id"],
+            "event_time": event_time.astimezone(timezone.utc),
+            "fault": spec.get("fault"),
+            "send_count": spec.get("send_count", 1),
+        }
+        if spec["type"] == "ORDER_CREATED":
+            event.update(shipping_fee=shipping, items=items)
+        elif spec["type"] == "ORDER_CANCELLED":
+            event.update(cancel_reason_code=spec["reason"])
+        elif spec["type"] in ("PAYMENT_SUCCEEDED", "PAYMENT_FAILED"):
+            payment_no += 1
+            event.update(
+                payment_id=f"{order_id}-P{payment_no}",
+                payment_method=spec["method"],
+                payment_amount=payment_amount,
+                fail_reason_code=spec.get("fail_reason"),
+            )
+            if spec["type"] == "PAYMENT_SUCCEEDED":
+                succeeded_payment_id = event["payment_id"]
+        else:  # REFUND_SUCCEEDED
+            refund_no += 1
+            line_index = spec["item"] - 1
+            event.update(
+                refund_id=f"{order_id}-R{refund_no}",
+                payment_id=succeeded_payment_id,
+                order_item_id=items[line_index]["order_item_id"],
+                refund_quantity=spec["quantity"],
+                refund_amount=pricing.refund_amount(
+                    paid_amounts[line_index], items[line_index]["quantity"], spec["quantity"]),
+                refund_type=spec["refund_type"],
+                refund_reason_code=spec["reason"],
+            )
+        events.append(event)
+    return events
