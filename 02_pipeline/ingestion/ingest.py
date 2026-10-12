@@ -26,4 +26,28 @@ def handle_event(channel: str, body: bytes, send, received_at: str) -> tuple[int
       - 봉투 직렬화: json.dumps(..., ensure_ascii=False, separators=(",", ":"))
         payload 문자열은 한 글자도 바꾸지 않는다 (공백, 한글, 이스케이프 그대로)
     """
-    raise NotImplementedError
+    
+    # 채널 확인
+    if channel not in CHANNELS:
+        return 400, f"채널 {channel}은 정의되지 않음"
+
+    # 본문 UTF-8 확인
+    try:
+        payload = body.decode("utf-8")
+    except UnicodeDecodeError:
+        return 400, "본문이 UTF-8이 아님"
+
+    # 봉투 만들기
+    envelope = {
+        "channel": channel,
+        "received_at": received_at,
+        "payload": payload,
+    }
+
+    # Event Hubs로 보내기
+    try:
+        send(json.dumps(envelope, ensure_ascii=False, separators=(",", ":")))
+    except Exception as e:  # noqa: BLE001
+        return 503, f"송신 실패: {e}"
+
+    return 202, "수신 처리 성공"
