@@ -1,0 +1,8 @@
+send_events.py
+verify_arrival.py
+README.md
+*.pptx
+local.settings.json
+.venv
+__pycache__
+tests
