@@ -104,6 +104,9 @@ class TestToEvent(unittest.TestCase):
         self.assertEqual(channel_a.to_event({**PAY_FAIL_RAW, "failure_reason": "no_such"})["fail_reason_code"], "OTHER")
         self.assertEqual(channel_a.to_event({**REFUND_RAW, "reason": "no_such"})["refund_reason_code"], "OTHER")
 
+    def test_unmapped_payment_method_becomes_other(self):
+        self.assertEqual(channel_a.to_event({**PAY_OK_RAW, "method": "crypto"})["payment_method"], "OTHER")
+
     def test_input_is_not_modified(self):
         before = copy.deepcopy(ORDER_RAW)
         channel_a.to_event(ORDER_RAW)
@@ -134,6 +137,9 @@ class TestErrors(unittest.TestCase):
 
     def test_invalid_type_time(self):
         self.assertEqual(self.reason({**PAY_OK_RAW, "occurred_at": "yesterday"}), "INVALID_TYPE")
+
+    def test_unmapped_refund_type_is_invalid_value(self):
+        self.assertEqual(self.reason({**REFUND_RAW, "type": "exchange"}), "INVALID_VALUE")
 
     def test_unknown_event_type(self):
         self.assertEqual(self.reason({**PAY_OK_RAW, "event_type": "shipping.started"}), "UNKNOWN_EVENT_TYPE")

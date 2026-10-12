@@ -20,7 +20,8 @@
   UNKNOWN_EVENT_TYPE  event_type이 매핑표에 없음
   MISSING_REQUIRED    필수 필드 누락 (fields.require 사용)
   INVALID_TYPE        정수 필드가 정수가 아님 (fields.as_int 사용)
-  사유·실패 코드가 매핑에 없으면 오류가 아니라 "OTHER"로 둔다 (명세 2.3절)
+  결제수단·사유·실패 코드가 매핑에 없으면 오류가 아니라 "OTHER"로 둔다 (명세 2.3절)
+  INVALID_VALUE   환불 유형(type)이 cancel/return이 아님 (OTHER가 없는 닫힌 집합)
   값 범위 검증(음수 금액 등 INVALID_VALUE)은 이 파일이 아니라 공통 검증이 한다
 """
 from conversion_error import ConversionError

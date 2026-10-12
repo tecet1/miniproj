@@ -65,7 +65,7 @@ Function은 payload를 해석하지 않고 `{"channel","received_at","payload"}`
 | 필드 | 타입 | 필수 | 설명 |
 |---|---|---|---|
 | payment_id | STRING | Y | 결제 시도 ID (채널 내 유일) |
-| payment_method | STRING | Y | `CARD` `EASY_PAY` `BANK_TRANSFER` `VIRTUAL_ACCOUNT` |
+| payment_method | STRING | Y | `CARD` `EASY_PAY` `BANK_TRANSFER` `VIRTUAL_ACCOUNT` `OTHER` |
 | payment_amount | INT | Y | 결제 요청/승인 금액 (배송비 포함, 할인 반영 후) |
 | fail_reason_code | STRING | 실패 시 Y | `LIMIT_EXCEEDED` `CARD_DECLINED` `TIMEOUT` `OTHER` |
 
@@ -167,6 +167,7 @@ Function은 payload를 해석하지 않고 `{"channel","received_at","payload"}`
 | | EASY_PAY | `easy_pay` | `SIMPLE` | `20` |
 | | BANK_TRANSFER | `bank` | `TRANSFER` | `30` |
 | | VIRTUAL_ACCOUNT | `vbank` | `VBANK` | `40` |
+| | OTHER | 그 외 | 그 외 | 그 외 |
 | 사유 | CHANGE_OF_MIND | `change_of_mind` | `BUYER_REMORSE` | `01` |
 | | DEFECT | `defect` | `DEFECTIVE` | `02` |
 | | WRONG_ITEM | `wrong_item` | `WRONG_DELIVERY` | `03` |
@@ -174,7 +175,7 @@ Function은 payload를 해석하지 않고 `{"channel","received_at","payload"}`
 | | OTHER | 그 외 | 그 외 | 그 외 |
 | 결제 실패 | LIMIT_EXCEEDED / CARD_DECLINED / TIMEOUT / OTHER | `limit_exceeded` `declined` `timeout` | `LIMIT` `DECLINED` `TIMEOUT` | `F1` `F2` `F3` |
 
-(사유·실패 코드는 매핑에 없는 값이면 `OTHER`로 처리하고 오류로 보지 않음)
+(결제수단·사유·실패 코드는 매핑에 없는 값이면 `OTHER`로 처리하고 오류로 보지 않음. 환불 유형은 `OTHER`가 없으며, 매핑에 없는 값은 `INVALID_VALUE`로 격리)
 
 ---
 
@@ -225,7 +226,7 @@ Function은 payload를 해석하지 않고 `{"channel","received_at","payload"}`
 | `UNKNOWN_EVENT_TYPE` | 매핑표에 없는 이벤트 코드 |
 | `MISSING_REQUIRED` | 필수 필드 누락 |
 | `INVALID_TYPE` | 정수/시간 형식 오류 |
-| `INVALID_VALUE` | 음수 금액, 수량 0 이하, 할인 > 단가×수량 |
+| `INVALID_VALUE` | 음수 금액, 수량 0 이하, 할인 > 단가×수량, 매핑에 없는 환불 유형 |
 | `UNKNOWN_CHANNEL` | channel이 A/B/C 아님 |
 | `DUPLICATE_CONFLICT` | 같은 event_id, 다른 내용 (후속, PoC 미구현) |
 

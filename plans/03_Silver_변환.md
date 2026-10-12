@@ -22,7 +22,7 @@ Bronze의 채널별 원본을 공통 이벤트 모델로 변환해 이벤트 유
 - 이벤트 1건이 1행이며 추가만 한다. 중복은 `channel + event_id`로 제거한다. 모든 이벤트 테이블에 `received_at`을 둔다.
 - 시각은 UTC `TIMESTAMP`로 통일한다. C의 KST 문자열(시간대 표기 없음)은 UTC로 변환한다.
 - 비로그인은 `user_id = null` (C의 빈 문자열 포함). C의 `order_item_id`는 `ord_no-seq`.
-- 사유·실패 코드가 매핑에 없으면 `OTHER`이며 오류가 아니다.
+- 결제수단·사유·실패 코드가 매핑에 없으면 `OTHER`이며 오류가 아니다. 환불 유형은 `OTHER`가 없어 매핑에 없으면 `INVALID_VALUE`로 격리한다 (2026-10-12 승인).
 - 결제가 주문보다, 환불이 결제보다 먼저 와도 격리하지 않는다. 조인은 Gold에서 한다.
 - Quarantine 사유 코드: `MALFORMED_JSON`, `UNKNOWN_EVENT_TYPE`, `MISSING_REQUIRED`, `INVALID_TYPE`, `INVALID_VALUE`, `UNKNOWN_CHANNEL` (`DUPLICATE_CONFLICT`는 후속, PoC 미구현).
 - 채널별 변환은 `channels/`에, 공통 처리는 별도 파일에 둔다 (AGENTS.md).
