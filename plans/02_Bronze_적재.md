@@ -28,12 +28,11 @@ Event Hubs의 봉투 메시지를 원본 그대로 Bronze 단일 테이블에 �
 - 클러스터: 서버리스·일반 클러스터 모두 사용 가능. 서비스 자격 증명 방식은 문서상 공유 클러스터와 서버리스에서 권장된다.
 - 구현 분담: `kafka_options`는 구현·테스트 완료. `read_events`, `parse_envelope`, `write_bronze`는 입출력 명세와 함께 스텁으로 두고 직접 구현한다.
 
-## 확인 필요
+## 처리 기록
 
-1. `commerce_poc.bronze.events`가 이미 있다. 이전 작업의 테이블이면 컬럼이 다를 수 있다. 스키마와 행 수를 확인하고, 새 스키마와 다르면 삭제 후 재생성할지(데이터 삭제) 다른 이름을 쓸지 사용자가 정한다.
-2. `checkpoints` 볼륨에 이전 체크포인트가 있으면 새 하위 경로를 쓰므로 영향 없음. 다만 이전 데이터 정리 여부는 사용자가 정한다.
-3. 서비스 자격 증명 이름 (노트북 `SERVICE_CREDENTIAL`에 입력)
-4. Event Hubs Kafka 엔드포인트 포트는 9093을 가정했다. 연결 실패 시 이 값부터 확인한다. (미검증)
+- 구 스키마 테이블: `commerce_poc.bronze.events`에 이전 작업의 테이블(컬럼 `raw_payload`, `source_event_hub`, `partition`, `offset`, `broker_timestamp`, `bronze_ingested_at`)이 있었고, 사용자가 처리한 뒤 새 스키마로 생성했다.
+- 이전 테스트 메시지: Event Hubs 파티션 0의 offset 14~20에 이전 A 채널 v1 형식 메시지 7건이 남아 있었다(봉투 없음, `channel`·`received_at` null로 적재됨). 사용자가 Bronze에서 `DELETE ... WHERE channel IS NULL`로 삭제했다. 허브에는 보관 기간 동안 남으며, 체크포인트를 새로 만들면 다시 적재되므로 그때는 다시 지우거나 `channel IS NOT NULL`로 걸러야 한다.
+- 인증은 서비스 자격 증명(`commerce_event_hubs_reader`), 포트 9093, 소비자 그룹 `databricks`로 동작했다.
 
 ## 단계
 
@@ -62,6 +61,18 @@ Event Hubs의 봉투 메시지를 원본 그대로 Bronze 단일 테이블에 �
 
 - 중복 제거, 격리, 채널별 변환(Silver), 스키마 버전 처리, 실행 모니터링, Backfill, Key Vault
 
+## 검증 결과 (2026-10-12, Databricks 서버리스)
+
+확인함
+- 채널별 A 24, B 24, C 24 (합계 72). S19 중복과 S21 변형이 포함된다.
+- `bronze_check.check_bronze`가 `OK`: `(channel, payload)` 멀티셋이 fixtures와 같다.
+- `channel`이 있는 행 중 `received_at`이 null인 행 0건.
+- 적재 셀 재실행 후에도 채널별 24/24/24 유지 (사용자 보고).
+- `(eh_partition, eh_offset)` 중복 없음: 전체 72행, 고유 72 (사용자 쿼리 결과).
+
+확인하지 않음
+- 저장소의 키·연결 문자열 부재는 작성 시 코드 검토로만 확인했다.
+
 ## 상태
 
-진행 중 — 계획 01 7단계(도착 확인) 통과. 스텁 구현과 Databricks 실행 대기. 원격 실행은 모두 '미검증'.
+완료 — 위 '확인함' 범위 기준. '확인하지 않음' 항목은 후속 확인 대상.

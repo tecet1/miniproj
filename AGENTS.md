@@ -17,7 +17,7 @@
 
 - 모든 채널(A/B/C)은 같은 경로를 쓴다: HTTP → Azure Functions → Event Hubs → Bronze → Silver → Gold → Metric View → 대시보드.
 - 채널별 원본 형식은 서로 다르며, Silver에서 하나의 공통 이벤트 모델로 변환한다.
-- Bronze는 단일 테이블에 원본 JSON과 수신 메타데이터를 보존한다. 채널은 payload로 구분한다.
+- Bronze는 단일 테이블에 원본 JSON과 수신 메타데이터를 보존한다. 채널은 요청 URL 경로(`/api/events/{channel}`)로 전달받아 Function이 봉투에 담고, Bronze의 `channel` 컬럼으로 둔다.
 - 이벤트는 주문 생성·주문 취소·결제 성공·결제 실패·환불 성공 5종이다.
 - 지표는 결제일 귀속(원거래 기준)이다. 객단가·결제고객수 정의는 `01_contracts/contracts`의 지표 문서를 따른다.
 - 인증은 Managed Identity를 사용한다. 코드 배포는 GitHub Actions를 사용한다.

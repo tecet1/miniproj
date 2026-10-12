@@ -1,13 +1,13 @@
 # 이벤트 명세 (01_contracts/contracts)
 
-> 상태: 초안. 2026-10-12 환불 수량 필드(`refund_quantity`)를 반영했다. 5절은 미확정 항목이다.
+> 상태: 초안. 2026-10-12 환불 수량 필드(`refund_quantity`)와 구현된 Bronze 컬럼·채널 전달 방식(요청 경로)을 반영했다. 5절은 미확정 항목이다.
 
 ## 0. 적용 원칙
 
 | 항목 | 결정 |
 |---|---|
 | 전송 경로 | 모든 채널 동일: HTTP POST → Azure Functions → Event Hubs (`commerce-events`) |
-| Bronze | 원본 JSON을 수정 없이 보존 + 수신 메타데이터. 채널은 payload 컬럼으로 구분 |
+| Bronze | 원본 JSON(`payload`)을 수정 없이 보존 + 수신 메타데이터. 채널은 요청 URL 경로(`/api/events/{channel}`)로 전달받아 Function이 봉투에 담고 `channel` 컬럼으로 둔다 |
 | Silver | 채널별 원본을 **공통 이벤트 모델**로 변환. 검증 실패는 Quarantine |
 | 이벤트 종류 | 주문 생성 · 주문 취소 · 결제 성공 · 결제 실패 · 환불 성공 (5종) |
 | 금액 | 원화 정수(KRW). 상품금액·할인·배송비·결제금액·환불금액을 별도 필드로 분리 |
@@ -33,7 +33,8 @@
 | order_id | STRING | Y | 주문 ID (채널 내 유일) |
 | user_id | STRING | N | 채널 내 회원 ID. 비로그인이면 null |
 
-수신 메타데이터(Bronze에서 부여): `received_at`, `eventhub_partition`, `eventhub_offset`, `source_payload`(원본 JSON), `ingest_run_id`.
+Bronze 컬럼: `channel`(요청 경로의 채널), `received_at`(Function이 부여한 수신 시각, UTC), `payload`(원본 JSON 문자열), `eh_partition`, `eh_offset`(Event Hubs 위치, 키는 `(eh_partition, eh_offset)`), `eh_enqueued_at`(Event Hubs 수신 시각), `ingested_at`(Bronze 적재 시각).
+Function은 payload를 해석하지 않고 `{"channel","received_at","payload"}` 봉투로 감싸 Event Hubs에 보낸다. `channel`은 A·B·C 외에는 400으로 거절한다.
 
 ### 1.2 이벤트별 본문
 

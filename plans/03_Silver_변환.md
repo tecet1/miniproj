@@ -1,0 +1,84 @@
+# 계획 03. Bronze → Silver 변환
+
+## 목표
+
+Bronze의 채널별 원본을 공통 이벤트 모델로 변환해 이벤트 유형별 Silver 테이블에 적재하고, 검증 실패는 Quarantine으로 격리한다.
+
+## 입력 / 산출물
+
+- 입력
+  - `commerce_poc.bronze.events` (채널, 수신 시각, 원본 payload 문자열)
+  - `01_contracts/contracts/event_spec.md` (공통 모델·채널 매핑·Quarantine 사유), `A사_ERD.pptx` 1장 (Silver 테이블 구조)
+  - 기대값: `01_contracts/data/fixtures/expected/expected.json`
+- 산출물
+  - `02_pipeline/silver/channels/`: 채널별 변환 `channel_a.py`, `channel_b.py`, `channel_c.py` (원본 JSON 문자열 → 공통 이벤트 또는 격리 사유)
+  - `02_pipeline/silver/`: 공통 처리(검증, 중복 제거, 테이블 분배, 적재), 실행 노트북(호출만)
+  - 테이블 `commerce_poc.silver.{orders, order_items, payments, refunds, order_cancellations, quarantine}`
+  - 테스트 `02_pipeline/tests/silver/`
+
+## 이미 정해진 것 (ERD·명세 기준, 이 계획에서 다시 정하지 않는다)
+
+- 테이블 6개: 이벤트 유형별 적재. 주문 생성 → `orders`(PK channel, order_id)·`order_items`(PK channel, order_item_id), 결제 성공·실패 → `payments`(PK channel, payment_id, `status`로 구분), 환불 → `refunds`(PK channel, refund_id), 주문 취소 → `order_cancellations`(PK channel, order_id, 주문당 0..1), 검증 실패 → `quarantine`.
+- 이벤트 1건이 1행이며 추가만 한다. 중복은 `channel + event_id`로 제거한다. 모든 이벤트 테이블에 `received_at`을 둔다.
+- 시각은 UTC `TIMESTAMP`로 통일한다. C의 KST 문자열(시간대 표기 없음)은 UTC로 변환한다.
+- 비로그인은 `user_id = null` (C의 빈 문자열 포함). C의 `order_item_id`는 `ord_no-seq`.
+- 사유·실패 코드가 매핑에 없으면 `OTHER`이며 오류가 아니다.
+- 결제가 주문보다, 환불이 결제보다 먼저 와도 격리하지 않는다. 조인은 Gold에서 한다.
+- Quarantine 사유 코드: `MALFORMED_JSON`, `UNKNOWN_EVENT_TYPE`, `MISSING_REQUIRED`, `INVALID_TYPE`, `INVALID_VALUE`, `UNKNOWN_CHANNEL`, `DUPLICATE_CONFLICT`.
+- 채널별 변환은 `channels/`에, 공통 처리는 별도 파일에 둔다 (AGENTS.md).
+
+## 구현된 Bronze와 문서 (정리 완료)
+
+Bronze를 먼저 구현해 문서와 어긋났던 부분을 2026-10-12 사용자 승인으로 구현에 맞췄다.
+
+- `event_spec.md` 0절·1.1절, AGENTS.md §2, ERD 1장(`A사_ERD.pptx`)을 반영했다.
+- Bronze 컬럼은 `channel`, `received_at`, `payload`, `eh_partition`, `eh_offset`, `eh_enqueued_at`, `ingested_at`이며 키는 `(eh_partition, eh_offset)`이다. `ingest_run_id`는 두지 않는다.
+- `channel`은 요청 URL 경로의 값을 Function이 봉투에 담은 것이다. payload에서 판단하지 않는다.
+- Quarantine의 원본 위치 컬럼(`bronze_partition`, `bronze_offset`)은 Bronze의 `eh_partition`, `eh_offset` 값을 담는다.
+- 후속 과제: 채널별 수집기·키 분리(채널 인증이 필요해질 때).
+
+## 설계 결정 (사용자 확인 필요)
+
+1. **변환 방식**
+   - (a) 채널별 변환을 순수 Python 함수로 작성한다 (`원본 JSON 문자열 → 공통 이벤트 dict 또는 격리 사유`). 로컬에서 fixtures로 테스트하고, Spark에서는 UDF로 호출한다. 표준 라이브러리만 쓰므로 CI에서 돈다. (권장)
+   - (b) Spark 컬럼 표현식으로 작성한다. 분산 처리에 자연스럽지만 로컬·CI에서 검증하기 어렵고 Databricks 실행 전까지 미검증으로 남는다.
+2. **적재 방식:** Bronze를 `availableNow` 스트림으로 읽고 배치마다 변환해 각 테이블에 `channel + event_id` 기준 insert-only `MERGE`로 쓴다. 같은 Bronze를 다시 읽어도 행이 늘지 않는다(멱등).
+3. **중복 처리:** 같은 `channel + event_id`가 다시 오면 무시한다. 내용이 다르면 최초 건을 유지하고 충돌 건은 `DUPLICATE_CONFLICT`로 격리한다 (명세 4절).
+4. **행 단위 기대값:** 현재 기대값은 건수·금액 합계뿐이다. 변환 결과를 행 단위로 확인하려면 생성기의 중간 이벤트(`canonical`)와 변환 결과를 비교하는 왕복 테스트를 쓴다. 독립 기대값(`expected`)에 Silver 행을 추가하는 것은 명세 변경 순서(AGENTS.md §5)에 따라 별도 승인이 필요하다.
+5. **S21 변형 3종의 격리 사유:** 이벤트 코드 불명(`UNKNOWN_EVENT_TYPE`), 필수 필드 누락(`MISSING_REQUIRED`), 타입 오류(`INVALID_TYPE`)가 어떻게 판정되어야 하는지 채널마다 확인한다.
+
+## 단계
+
+0. Bronze 적재 완료 (완료)
+1. 문서·명세를 구현된 Bronze에 맞춰 정리 (완료)
+2. 설계 결정 확정 (위 1~5)
+3. 채널별 변환 A → B → C: 입출력 명세 먼저, 한 채널씩 구현하고 짝 테스트
+4. 공통 처리: 필수 필드·타입·값 검증, 중복 제거, 이벤트 유형별 분배
+5. Spark 적재와 노트북 (호출만)
+6. Databricks 실행, 건수·금액·참조·격리 대조, 재실행
+
+## 완료 조건
+
+- 건수가 `expected.json` 합계와 일치한다: `orders` 27, `order_items` 33, `payments` 27, `order_cancellations` 3, `refunds` 3, `quarantine` 9.
+- Bronze 72 = `orders` 27 + `order_cancellations` 3 + `payments` 27 + `refunds` 3 + `quarantine` 9 + 제거된 중복 3.
+- 격리 9건은 채널마다 3종(`MISSING_REQUIRED`, `INVALID_TYPE`, `UNKNOWN_EVENT_TYPE`)이 한 건씩이며, 원본 payload와 Bronze 위치가 보존된다.
+- `payments`에서 S19 중복이 1건으로 줄고, 주문당 결제 시도 수(S06: 실패 1·성공 1)가 맞는다.
+- 금액 정합: 주문별 `payment_amount` = 상품 결제금액 합 + 배송비. 환불은 원결제·상품 행을 참조한다 (참조 누락 0건, `channel + payment_id`·`channel + order_item_id`).
+- 시각 변환: A는 ISO UTC, B는 epoch ms, C는 KST 문자열을 같은 UTC 시각으로 변환한다. S23의 결제 시각이 UTC 2026-10-11T15:30:00Z가 된다.
+- 비로그인 `user_id`가 null이다.
+- 같은 Bronze로 재실행해도 행 수가 그대로다.
+- 저장소에 키·연결 문자열이 없다.
+
+## 검증 방법
+
+- 로컬: `python -m unittest discover -s .\02_pipeline\tests\silver -v` (고정 입력 fixtures를 채널별 변환에 넣어 공통 이벤트와 비교)
+- Databricks: 적재 후 대조 함수로 테이블별 건수·합계·참조·격리 사유를 `expected.json`과 비교하고 재실행 후 건수를 확인한다. 실행 전까지 '미검증'으로 적는다.
+- 기대값은 구현 통과를 위해 수정하지 않는다.
+
+## 범위 밖
+
+- Gold(Fact·Dimension), Metric View, 대시보드, 상품 SCD Type 2, 스키마 버전 처리, 이상 주문 목록·미결 목록, Backfill, 실행 모니터링
+
+## 상태
+
+초안 — 문서 정리 완료. 설계 결정 1~5 확정 대기.
