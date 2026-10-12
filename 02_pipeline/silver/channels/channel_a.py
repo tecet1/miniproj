@@ -27,7 +27,7 @@
 from datetime import UTC, datetime
 
 from conversion_error import ConversionError
-from fields import get_required, get_required_int
+from fields import get_required, get_required_int, map_code
 
 CHANNEL = "A"
 
@@ -57,12 +57,6 @@ def parse_time(text: str) -> datetime:
     except (ValueError, TypeError):
         raise ConversionError("INVALID_TYPE", f"occurred_at={text!r}")
 
-def map_code(table: dict, value, default: str = "OTHER") -> str:
-    """원본 코드를 공통 값으로 바꾼다. 표에 없으면(None 포함) default를 돌려준다. 오류가 아니다.
-
-    결제수단, 사유, 결제 실패 사유에 쓴다. (환불 유형은 default가 없으므로 build_refund에서 따로 처리)
-    """
-    return table.get(value, default)
 
 # ── 이벤트 유형별 필드: raw -> 그 유형에만 있는 공통 필드 dict ────────────────────────────
 def build_item(item: dict) -> dict:

@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "02_pipeline" / "silver"))
 
 from conversion_error import ConversionError
-from fields import get_required, get_required_int
+from fields import get_required, get_required_dict, get_required_int, map_code
 
 
 class TestGetRequired(unittest.TestCase):
@@ -43,6 +43,33 @@ class TestGetRequiredInt(unittest.TestCase):
             with self.assertRaises(ConversionError) as ctx:
                 get_required_int(data, "amount")
             self.assertEqual(ctx.exception.reason_code, "MISSING_REQUIRED")
+
+
+class TestGetRequiredDict(unittest.TestCase):
+    def test_returns_dict(self):
+        self.assertEqual(get_required_dict({"d": {"fee": 0}}, "d"), {"fee": 0})
+
+    def test_missing_is_missing_required(self):
+        with self.assertRaises(ConversionError) as ctx:
+            get_required_dict({}, "d")
+        self.assertEqual(ctx.exception.reason_code, "MISSING_REQUIRED")
+
+    def test_non_dict_is_invalid_type(self):
+        for bad in ("x", 1, [1]):
+            with self.assertRaises(ConversionError) as ctx:
+                get_required_dict({"d": bad}, "d")
+            self.assertEqual(ctx.exception.reason_code, "INVALID_TYPE")
+
+
+class TestMapCode(unittest.TestCase):
+    TABLE = {"card": "CARD"}
+
+    def test_known_code(self):
+        self.assertEqual(map_code(self.TABLE, "card"), "CARD")
+
+    def test_unknown_and_none_become_other(self):
+        self.assertEqual(map_code(self.TABLE, "crypto"), "OTHER")
+        self.assertEqual(map_code(self.TABLE, None), "OTHER")
 
 
 if __name__ == "__main__":

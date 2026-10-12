@@ -19,3 +19,19 @@ def get_required_int(data: dict, key: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ConversionError("INVALID_TYPE", f"{key}={value!r}")
     return value
+
+
+def get_required_dict(data: dict, key: str) -> dict:
+    """필수 객체(중첩 dict) 필드 값을 돌려준다. 없으면 MISSING_REQUIRED, dict가 아니면 INVALID_TYPE."""
+    value = get_required(data, key)
+    if not isinstance(value, dict):
+        raise ConversionError("INVALID_TYPE", f"{key}={value!r}")
+    return value
+
+
+def map_code(table: dict, value, default: str = "OTHER") -> str:
+    """원본 코드를 공통 값으로 바꾼다. 표에 없으면(None 포함) default를 돌려준다. 오류가 아니다.
+
+    결제수단, 사유, 결제 실패 사유에 쓴다. (환불 유형은 default가 없으므로 build_refund에서 따로 처리)
+    """
+    return table.get(value, default)
