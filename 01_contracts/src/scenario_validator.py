@@ -4,7 +4,6 @@ EVENT_TYPES = {"ORDER_CREATED", "ORDER_CANCELLED", "PAYMENT_SUCCEEDED", "PAYMENT
 
 
 def validate_scenarios(scenarios: list[dict], skus: dict[str, dict]) -> None:
-    
     """잘못된 입력을 생성 전에 막는다. 문제가 있으면 ValueError.
 
     검사 항목 (이 두 가지만 검사한다)

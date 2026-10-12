@@ -47,7 +47,6 @@ class TestChannelA(unittest.TestCase):
         self.assertEqual(raw["order_item_id"], "A-S09-1-1")
         self.assertEqual((raw["amount"], raw["type"], raw["reason"]), (35000, "return", "defect"))
 
-    @unittest.skip("명세 승인 대기: 환불 수량 필드명 (제안: refund_quantity)")
     def test_refund_quantity(self):
         self.assertEqual(channel_a.to_raw(ev.refund("A"))["refund_quantity"], 1)
 

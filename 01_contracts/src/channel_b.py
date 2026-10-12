@@ -46,7 +46,8 @@ def to_raw(event: dict) -> dict:
             raw["declineCode"] = FAIL_REASONS[event["fail_reason_code"]]
     else:  # REFUND_SUCCEEDED
         raw.update(refundId=event["refund_id"], paymentId=event["payment_id"],
-                   lineId=event["order_item_id"], refundAmount=event["refund_amount"],
+                   lineId=event["order_item_id"], refundQty=event["refund_quantity"],
+                   refundAmount=event["refund_amount"],
                    claimType=REFUND_TYPES[event["refund_type"]],
                    claimReason=REASONS[event["refund_reason_code"]])
     return raw

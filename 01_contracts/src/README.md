@@ -54,7 +54,6 @@ python -m unittest discover -s .\02_pipeline\tests\contracts -v
 python .\01_contracts\src\generate.py
 ```
 
-## 환불 수량 필드 (명세 승인 대기)
+## 환불 수량 필드
 
-환불 이벤트의 수량 필드명이 이벤트 명세에 아직 없다. 제안은 A `refund_quantity`, B `refundQty`, C `rfd_qty`이며
-승인되면 `skip`된 `test_refund_quantity` 3개를 활성화하고 채널 변환기에 반영한다 (명세 → 기대값 → 구현 순서).
+수량 일부 환불을 위해 환불 이벤트에 수량 필드를 둔다 (A `refund_quantity`, B `refundQty`, C `rfd_qty`). 이벤트 명세 `event_spec.md`에 있다.
