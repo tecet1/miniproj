@@ -24,7 +24,7 @@ Bronze의 채널별 원본을 공통 이벤트 모델로 변환해 이벤트 유
 - 비로그인은 `user_id = null` (C의 빈 문자열 포함). C의 `order_item_id`는 `ord_no-seq`.
 - 사유·실패 코드가 매핑에 없으면 `OTHER`이며 오류가 아니다.
 - 결제가 주문보다, 환불이 결제보다 먼저 와도 격리하지 않는다. 조인은 Gold에서 한다.
-- Quarantine 사유 코드: `MALFORMED_JSON`, `UNKNOWN_EVENT_TYPE`, `MISSING_REQUIRED`, `INVALID_TYPE`, `INVALID_VALUE`, `UNKNOWN_CHANNEL`, `DUPLICATE_CONFLICT`.
+- Quarantine 사유 코드: `MALFORMED_JSON`, `UNKNOWN_EVENT_TYPE`, `MISSING_REQUIRED`, `INVALID_TYPE`, `INVALID_VALUE`, `UNKNOWN_CHANNEL` (`DUPLICATE_CONFLICT`는 후속, PoC 미구현).
 - 채널별 변환은 `channels/`에, 공통 처리는 별도 파일에 둔다 (AGENTS.md).
 
 ## 구현된 Bronze와 문서 (정리 완료)
@@ -34,24 +34,26 @@ Bronze를 먼저 구현해 문서와 어긋났던 부분을 2026-10-12 사용자
 - `event_spec.md` 0절·1.1절, AGENTS.md §2, ERD 1장(`A사_ERD.pptx`)을 반영했다.
 - Bronze 컬럼은 `channel`, `received_at`, `payload`, `eh_partition`, `eh_offset`, `eh_enqueued_at`, `ingested_at`이며 키는 `(eh_partition, eh_offset)`이다. `ingest_run_id`는 두지 않는다.
 - `channel`은 요청 URL 경로의 값을 Function이 봉투에 담은 것이다. payload에서 판단하지 않는다.
-- Quarantine의 원본 위치 컬럼(`bronze_partition`, `bronze_offset`)은 Bronze의 `eh_partition`, `eh_offset` 값을 담는다.
+- Quarantine은 Bronze 행을 그대로 옮기고 사유를 붙인다: Bronze 7컬럼 + `reason_code`, `quarantined_at`. 키는 `(eh_partition, eh_offset)`. (2026-10-12 승인, 명세·ERD 반영)
 - 후속 과제: 채널별 수집기·키 분리(채널 인증이 필요해질 때).
 
-## 설계 결정 (사용자 확인 필요)
+## 설계 결정
 
-1. **변환 방식**
-   - (a) 채널별 변환을 순수 Python 함수로 작성한다 (`원본 JSON 문자열 → 공통 이벤트 dict 또는 격리 사유`). 로컬에서 fixtures로 테스트하고, Spark에서는 UDF로 호출한다. 표준 라이브러리만 쓰므로 CI에서 돈다. (권장)
-   - (b) Spark 컬럼 표현식으로 작성한다. 분산 처리에 자연스럽지만 로컬·CI에서 검증하기 어렵고 Databricks 실행 전까지 미검증으로 남는다.
-2. **적재 방식:** Bronze를 `availableNow` 스트림으로 읽고 배치마다 변환해 각 테이블에 `channel + event_id` 기준 insert-only `MERGE`로 쓴다. 같은 Bronze를 다시 읽어도 행이 늘지 않는다(멱등).
-3. **중복 처리:** 같은 `channel + event_id`가 다시 오면 무시한다. 내용이 다르면 최초 건을 유지하고 충돌 건은 `DUPLICATE_CONFLICT`로 격리한다 (명세 4절).
-4. **행 단위 기대값:** 현재 기대값은 건수·금액 합계뿐이다. 변환 결과를 행 단위로 확인하려면 생성기의 중간 이벤트(`canonical`)와 변환 결과를 비교하는 왕복 테스트를 쓴다. 독립 기대값(`expected`)에 Silver 행을 추가하는 것은 명세 변경 순서(AGENTS.md §5)에 따라 별도 승인이 필요하다.
-5. **S21 변형 3종의 격리 사유:** 이벤트 코드 불명(`UNKNOWN_EVENT_TYPE`), 필수 필드 누락(`MISSING_REQUIRED`), 타입 오류(`INVALID_TYPE`)가 어떻게 판정되어야 하는지 채널마다 확인한다.
+확정 (2026-10-12)
+1. **변환 방식:** 채널별 변환을 순수 Python 함수로 작성하고 Spark에서는 UDF로 호출한다. 로컬·CI에서 fixtures로 검증할 수 있다. 입력(원본 JSON 문자열)과 출력(공통 이벤트 또는 격리 사유) 인터페이스를 고정해 두어, 대량 부하 실험(`04_experiments`)에서 필요하면 pandas UDF나 Spark 표현식으로 구현만 바꿀 수 있게 한다.
+2. **적재 방식:** Bronze를 `availableNow` 스트림으로 읽고, `foreachBatch`에서 배치마다 변환해 각 테이블에 `channel + event_id` 기준 insert-only `MERGE`로 쓴다. 같은 배치 안의 중복은 MERGE 전에 먼저 제거한다.
+3. **검증 방식:** (가) 왕복 테스트: 생성기의 공통 이벤트 → 채널 원본 → Silver 변환 결과가 처음의 공통 이벤트와 같은지 확인한다. (나) 격리 확인: S21의 오류 주입 이벤트가 맞는 `reason_code`로 격리되고 정상 테이블에 들어가지 않는지 확인한다.
+4. **Quarantine 컬럼:** 위 "구현된 Bronze와 문서" 참조.
+5. **중복 충돌(`DUPLICATE_CONFLICT`):** 최초 건 유지 규칙만 구현한다. "최초 건" = `received_at` 오름차순, 같으면 `(eh_partition, eh_offset)` 오름차순. 충돌 건의 격리는 PoC에서 구현하지 않는다 (2026-10-12 확정). 단일 행 검증은 Silver, 테이블 간 업무 규칙 검증은 Gold로 나누며, 이 항목은 이벤트 신원 판단이라 Silver 후속 과제다. 후속 조건: 내용 해시 컬럼 또는 이벤트 원장, 충돌 시나리오·기대값 추가(명세 변경 순서 적용).
+
+구현 원칙: 변환 함수는 역할별 작은 함수로 나누고 매핑 상수(이벤트 코드, 결제수단, 사유)는 한곳에 둔다. 채널 파일 3개는 같은 구조를 가져 읽는 순서가 같도록 한다.
+
 
 ## 단계
 
 0. Bronze 적재 완료 (완료)
 1. 문서·명세를 구현된 Bronze에 맞춰 정리 (완료)
-2. 설계 결정 확정 (위 1~5)
+2. 설계 결정 확정 (위 1~5, 완료)
 3. 채널별 변환 A → B → C: 입출력 명세 먼저, 한 채널씩 구현하고 짝 테스트
 4. 공통 처리: 필수 필드·타입·값 검증, 중복 제거, 이벤트 유형별 분배
 5. Spark 적재와 노트북 (호출만)
@@ -81,4 +83,4 @@ Bronze를 먼저 구현해 문서와 어긋났던 부분을 2026-10-12 사용자
 
 ## 상태
 
-초안 — 문서 정리 완료. 설계 결정 1~5 확정 대기.
+설계 결정 1~5 확정. 구현 미착수 (채널 A 변환부터).

@@ -212,7 +212,8 @@ Function은 payload를 해석하지 않고 `{"channel","received_at","payload"}`
 
 **중복·순서**
 - 중복 제거 키: `channel + event_id`. 동일 키가 다시 오면 무시(멱등).
-- 같은 `event_id`에 내용이 다른 경우: 최초 건 유지, 충돌 건은 Quarantine(`DUPLICATE_CONFLICT`).
+- "최초 건"은 `received_at`이 이른 행, 같으면 `(eh_partition, eh_offset)`이 작은 행이다. 같은 키가 다시 오면 최초 건만 남기고 나머지는 무시한다.
+- 같은 `event_id`에 내용이 다른 경우: 최초 건 유지는 같다. 충돌 건을 Quarantine(`DUPLICATE_CONFLICT`)으로 격리하는 것은 **PoC에서 구현하지 않는다(후속).** 판정에 내용 해시 컬럼 또는 이벤트 원장이 필요하고 시나리오·기대값도 없기 때문이다.
 - 결제가 주문보다 먼저 와도 격리하지 않음. Gold에서 `order_id`로 조인.
 - 환불이 결제보다 먼저 오는 경우도 격리하지 않고 Gold 조인 시점에 매칭.
 
@@ -226,7 +227,10 @@ Function은 payload를 해석하지 않고 `{"channel","received_at","payload"}`
 | `INVALID_TYPE` | 정수/시간 형식 오류 |
 | `INVALID_VALUE` | 음수 금액, 수량 0 이하, 할인 > 단가×수량 |
 | `UNKNOWN_CHANNEL` | channel이 A/B/C 아님 |
-| `DUPLICATE_CONFLICT` | 같은 event_id, 다른 내용 |
+| `DUPLICATE_CONFLICT` | 같은 event_id, 다른 내용 (후속, PoC 미구현) |
+
+**Quarantine 컬럼:** 격리한 Bronze 행을 그대로 옮기고 사유를 붙인다.
+`channel`, `received_at`, `payload`, `eh_partition`, `eh_offset`, `eh_enqueued_at`, `ingested_at`(Bronze와 같은 값·이름) + `reason_code`, `quarantined_at`(격리 시각). 키는 `(eh_partition, eh_offset)`.
 
 **지표와의 연결**
 - 결제일 귀속: `PAYMENT_SUCCEEDED.event_time` 기준. 환불은 `payment_id`로 원결제일에 귀속.
