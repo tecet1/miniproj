@@ -12,6 +12,7 @@ import channel_b
 import channel_c
 import faults  # noqa: F401
 import scenario_loader  # noqa: F401
+import scenario_validator  # noqa: F401
 
 CHANNELS = {"A": channel_a, "B": channel_b, "C": channel_c}
 ROOT = Path(__file__).resolve().parents[2]
@@ -39,7 +40,7 @@ def write_fixtures(out_dir, scenarios: list[dict], skus: dict[str, dict]) -> Non
 def main() -> None:
     """명령줄 실행. 기본 입력은 01_contracts/contracts, 기본 출력은 01_contracts/data/fixtures.
 
-    순서: 파일 읽기 -> validate_scenarios -> write_fixtures. 끝나면 채널별 줄 수를 출력한다.
+    순서: 파일 읽기(scenario_loader) -> scenario_validator.validate_scenarios -> write_fixtures. 끝나면 채널별 줄 수를 출력한다.
     """
     raise NotImplementedError
 
