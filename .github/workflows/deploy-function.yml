@@ -1,8 +1,8 @@
-name: Deploy channel A Function
+name: Deploy ingestion Function
 
 on:
   push:
-    branches: [main]
+    branches: [master]
     paths:
       - "02_pipeline/ingestion/**"
       - ".github/workflows/deploy-function.yml"
@@ -13,12 +13,12 @@ permissions:
   id-token: write
 
 concurrency:
-  group: deploy-channel-a-function
+  group: deploy-ingestion-function
   cancel-in-progress: false
 
 jobs:
   deploy:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
 
     steps:
