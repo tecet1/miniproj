@@ -1,7 +1,11 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "6"
+# ///
 # MAGIC %md
 # MAGIC # Bronze 적재: Event Hubs → commerce_poc.bronze.events
-# MAGIC 로직은 `bronze_stream.py`에 있고 이 노트북은 호출만 한다. 아래 값은 비밀이 아니다.
+# MAGIC `bronze_stream.py` 호출
 
 # COMMAND ----------
 
@@ -29,3 +33,9 @@ display(spark.table(TABLE).groupBy("channel").count())
 
 # 비어 있으면 fixtures와 일치한다
 print(check_bronze(spark, TABLE, SINCE) or "OK")
+
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC    SELECT channel, COUNT(*) FROM commerce_poc.bronze.events GROUP BY channel;
