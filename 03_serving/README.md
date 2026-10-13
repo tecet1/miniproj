@@ -9,4 +9,4 @@
 | `genie/` | 대시보드 이후의 후속 범위 |
 | `reference/` | 벤치마크 참고 자료(스마트스토어 캡처 등). 계정·사업자 정보가 있을 수 있어 외부 공개 전에 마스킹한다. |
 
-지표 정의는 `01_contracts/contracts/event_spec.md` 4절을 따른다. 현재 존재하는 폴더는 `reference/`뿐이며 나머지는 해당 단계를 시작할 때 만든다.
+지표 정의는 `01_contracts/contracts/event_spec.md` 6.5절을 따른다. 현재 존재하는 폴더는 `reference/`뿐이며 나머지는 해당 단계를 시작할 때 만든다.

@@ -19,9 +19,9 @@
 - 채널별 원본 형식은 서로 다르며, Silver에서 하나의 공통 이벤트 모델로 변환한다.
 - Bronze는 단일 테이블에 원본 JSON과 수신 메타데이터를 보존한다. 채널은 요청 URL 경로(`/api/events/{channel}`)로 전달받아 Function이 봉투에 담고, Bronze의 `channel` 컬럼으로 둔다.
 - 이벤트는 주문 생성·주문 취소·결제 성공·결제 실패·환불 성공 5종이다.
-- 지표는 결제일 귀속(원거래 기준)이다. 객단가·결제고객수 정의는 `01_contracts/contracts`의 지표 문서를 따른다.
+- 지표는 결제일 귀속(원거래 기준)이다. 지표 정의는 `01_contracts/contracts/event_spec.md` 6.5절을 따른다.
 - 인증은 Managed Identity를 사용한다. 코드 배포는 GitHub Actions를 사용한다.
-- 지금 단계: 이벤트 명세 → 생성기 → Bronze 적재. 이후: Silver → Gold·Metric View → 대시보드.
+- 지금 단계: Gold(Fact·Dimension). 이후: Metric View → 대시보드. (이벤트 명세·생성기·Bronze·Silver는 완료)
 - **범위 밖(요청 전에 구현하지 않는다):** 스키마 버전 처리, 상품 SCD Type 2, Backfill·Data Factory, Key Vault, 실행 모니터링, Linear 연동, Genie(대시보드 이후), 정량 성능 목표, 채널 간 고객 통합.
 - `04_experiments`는 핵심 기능 완료 후에 다룬다.
 
@@ -30,8 +30,7 @@
 | 폴더 | 책임 | 수정 가능 조건 |
 |---|---|---|
 | `01_contracts/contracts/` | 이벤트 명세, 공통 이벤트 모델, 지표 정의, 품질 규칙. 단일 기준 문서 | 사용자 승인 후에만 변경 |
-| `01_contracts/data/fixtures/` | 채널별 고정 입력(`events`)과 독립 기대값(`expected`) | **구현 작업에서 수정 금지.** 명세가 바뀔 때만 수정 |
-| `01_contracts/data/reference/` | SKU 매핑 등 참조 데이터 | 명세 변경 시 |
+| `01_contracts/data_fixtures/` | 채널별 고정 입력(`events`)과 독립 기대값(`expected`) | **구현 작업에서 수정 금지.** 명세가 바뀔 때만 수정 |
 | `01_contracts/src/` | 명세에 맞는 고정 시나리오·이벤트 생성기(채널별 파일) | 명세와 함께 |
 | `02_pipeline/ingestion/` | HTTP 수신(Functions)·Event Hubs 전송 | 구현 작업 |
 | `02_pipeline/bronze/` | Event Hubs → Bronze 적재 | 구현 작업 |
@@ -58,7 +57,7 @@
 명세가 바뀌면 항상 다음 순서로 진행한다. 순서를 건너뛰거나 거꾸로 하지 않는다.
 
 1. `01_contracts/contracts/` 명세 수정 (사용자 승인)
-2. `01_contracts/data/`의 입력 픽스처·독립 기대값 갱신
+2. `01_contracts/data_fixtures/`의 입력 픽스처·독립 기대값 갱신
 3. 생성기와 파이프라인 구현 수정
 4. 테스트 실행 및 결과 보고
 
@@ -73,6 +72,7 @@
 | 이벤트 생성 | `python .\01_contracts\src\generate.py` |
 | 전체 로컬 테스트 | `python -m unittest discover -s .\02_pipeline\tests -v` (하위 폴더에 `__init__.py` 필요) |
 | 층별 테스트 | `python -m unittest discover -s .\02_pipeline\tests\silver -v` |
+| Gold 테스트 | `python -m unittest discover -s .\02_pipeline\tests\gold -v` |
 | Databricks 실행 | 노트북은 Git folder 동기화 후 Databricks에서 실행 (사용자 확인) |
 
 - 로컬 테스트 통과는 Databricks 실행 성공을 뜻하지 않는다. 원격 실행은 별도로 확인하고, 확인 전에는 '미검증'으로 적는다.

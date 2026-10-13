@@ -6,11 +6,12 @@
 
 | 위치 | 내용 |
 |---|---|
-| `contracts/event_spec.md` | 이벤트 명세: 공통 이벤트 모델, Silver 테이블 키·컬럼(1.3절), 채널별 원본 형식과 매핑, 처리 규칙, 지표 정의 |
+| `contracts/event_spec.md` | 이벤트 명세: 공통 이벤트 모델, Silver 테이블 키·컬럼(1.3절), 채널별 원본 형식과 매핑, 처리 규칙, Gold·지표(6절) |
 | `contracts/scenarios.md`, `scenarios.json` | 소량 정답 대조 세트. 9개 시나리오를 세 채널에 같은 내용으로 적용한다. 값은 `scenarios.json`이 기준이다. |
 | `contracts/sku_spec.md`, `skus.json` | 상품 기준 데이터. 모든 채널이 같은 SKU(`product_id`)를 쓴다. |
+| `data_fixtures/A사_ERD.pdf` | 테이블 구조 레퍼런스(① Bronze·Silver, ② Gold, ③ 적재 흐름·Metric View). Gold는 이 ERD를 따르고, 명세와 어긋나면 사용자에게 확인한다. |
 | `data_fixtures/{A,B,C}/events.jsonl` | 채널별 고정 입력. 한 줄이 `{"channel","payload"}`이며 채널당 24건이다. |
-| `data_fixtures/expected/expected.json` | 독립 기대값(건수·금액·지표). 생성기와 로직을 공유하지 않는 `src/expected.py`가 만든다. |
+| `data_fixtures/expected/expected.json` | 독립 기대값(건수·금액·지표, Gold 일자·결제수단·환불 프로필 분포, Dimension 행 수). 생성기와 로직을 공유하지 않는 `src/expected.py`가 만든다. |
 | `src/` | 이벤트 생성기. 구성은 `src/README.md` 참고 |
 
 ## 변경 규칙

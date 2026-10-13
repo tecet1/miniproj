@@ -22,7 +22,7 @@ expected.py: scenarios.json, skus.json 만 읽어 기대값 계산 (위 모듈�
 | `channel_a/b/c` | 중립 이벤트 → 채널 원본 dict | 필드명·코드·시각 형식만 다름. 매핑표는 이미 채워져 있음 |
 | `faults` | 원본에 오류 주입 | 채널별 위치는 `FAULT_PATHS` |
 | `generate` | 줄 만들기와 파일 쓰기 | `{"channel","payload"}` 한 줄 |
-| `expected` | 독립 기대값 | 생성기와 로직을 공유하지 않는다 |
+| `expected` | 독립 기대값 | 생성기와 로직을 공유하지 않는다. Gold 분포(KST 일자 등)와 이상 주문 제외 규칙을 포함한다 |
 
 ## 모듈과 테스트
 

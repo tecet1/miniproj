@@ -105,8 +105,9 @@ foreachBatch 배치 하나마다 다음을 수행한다. 함수 이름은 `silve
 
 ## 상태
 
-설계 결정 1~5 확정. 채널 A·B·C 변환, 행 단위 공통 처리, 변환 견고성 수정, 참조 SKU 검증, UDF 결과 함수, Spark 적재(`silver_stream.py`)·노트북(`run_silver.py`)·검사(`silver_check.py`)를 구현했다.
+완료 (2026-10-13). 로컬 Silver 테스트와 Databricks 실행(서버리스)을 모두 확인했다.
 
-Databricks 실행 (서버리스, 사용자 보고 2026-10-13): `check_silver`가 최초 실행과 새 체크포인트 재실행 모두 `OK`였고, 건수는 `orders` 27, `order_items` 33, `payments` 27, `order_cancellations` 3, `refunds` 3, `quarantine` 9로 `expected.json`과 일치했다. 이 실행에서 확인한 `check_silver` 항목은 건수, Bronze 수지(72 = 63 + 격리 9 중 중복 3 제거 포함), 격리 사유, PK 중복, 참조 누락, 금액 정합이다.
-
-이후 `check_silver`에 업무 ID 중복, 격리 원본 보존, S23 시각 변환, S06 결제 시도 수 항목을 추가했다. 이 항목은 아직 Databricks에서 실행하지 않았으므로 미검증이며, 실행해 `OK`가 나오면 완료로 바꾼다. 남은 완료 조건: 저장소에 키·연결 문자열이 없다(코드 검토로만 확인).
+- 로컬: 채널 A·B·C 변환, 행 단위 공통 처리, 변환 견고성, 참조 SKU 검증, UDF 결과 함수, 테이블 정의, 검사 비교 함수, 가짜 Spark 객체를 쓴 컬럼 순서·MERGE 문장·처리 순서 테스트 (164건 통과, Claude 환경 기준).
+- Databricks (사용자 보고): `check_silver`가 최초 실행과 새 체크포인트 재실행 모두 `OK`. 건수는 `orders` 27, `order_items` 33, `payments` 27, `order_cancellations` 3, `refunds` 3, `quarantine` 9로 `expected.json`과 일치했다. 확인 항목은 건수, Bronze 수지, 격리 사유, PK 중복, 참조 누락, 금액 정합이다. 이후 추가한 업무 ID 중복, 격리 원본 보존, S23 시각 변환, S06 결제 시도 수 항목도 `OK`라고 보고받았다.
+- 저장소에 키·연결 문자열이 없다: 텍스트 파일(`.py`, `.md`, `.json`, `.yml`, `.txt`)을 키워드로 검색해 확인했다. 배포 워크플로는 GitHub Secrets 참조만 쓴다. Git 이력과 바이너리 파일(pptx, png)은 검사하지 않았다.
+- 남은 일(범위 밖): `DUPLICATE_CONFLICT`, 참조에 없는 SKU의 자리표시 행, 무작위 ID, 시나리오 추가는 후속이다. 서버리스 세션이 한 번 끊긴 적이 있어(`Spark session ... no longer usable`) 새 세션에서 재실행해 통과했다.

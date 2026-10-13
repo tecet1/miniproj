@@ -12,8 +12,27 @@
       "fact_refund": 1,
       "total_sales": 422000,
       "refund_amount": 35000,
+      "refund_quantity": 1,
       "paid_item_count": 10,
       "paying_customers": 6,
+      "sales_item_by_payment_date": {
+        "2026-10-12": 10
+      },
+      "sales_item_by_payment_method": {
+        "BANK_TRANSFER": 1,
+        "CARD": 6,
+        "EASY_PAY": 2,
+        "VIRTUAL_ACCOUNT": 1
+      },
+      "refund_by_payment_date": {
+        "2026-10-12": 1
+      },
+      "refund_by_refund_date": {
+        "2026-10-12": 1
+      },
+      "refund_by_profile": {
+        "RETURN-DEFECT": 1
+      },
       "net_sales": 387000,
       "refund_ratio": 0.08293838862559241,
       "unit_price_per_item": 42200.0,
@@ -31,8 +50,27 @@
       "fact_refund": 1,
       "total_sales": 422000,
       "refund_amount": 35000,
+      "refund_quantity": 1,
       "paid_item_count": 10,
       "paying_customers": 6,
+      "sales_item_by_payment_date": {
+        "2026-10-12": 10
+      },
+      "sales_item_by_payment_method": {
+        "BANK_TRANSFER": 1,
+        "CARD": 6,
+        "EASY_PAY": 2,
+        "VIRTUAL_ACCOUNT": 1
+      },
+      "refund_by_payment_date": {
+        "2026-10-12": 1
+      },
+      "refund_by_refund_date": {
+        "2026-10-12": 1
+      },
+      "refund_by_profile": {
+        "RETURN-DEFECT": 1
+      },
       "net_sales": 387000,
       "refund_ratio": 0.08293838862559241,
       "unit_price_per_item": 42200.0,
@@ -50,8 +88,27 @@
       "fact_refund": 1,
       "total_sales": 422000,
       "refund_amount": 35000,
+      "refund_quantity": 1,
       "paid_item_count": 10,
       "paying_customers": 6,
+      "sales_item_by_payment_date": {
+        "2026-10-12": 10
+      },
+      "sales_item_by_payment_method": {
+        "BANK_TRANSFER": 1,
+        "CARD": 6,
+        "EASY_PAY": 2,
+        "VIRTUAL_ACCOUNT": 1
+      },
+      "refund_by_payment_date": {
+        "2026-10-12": 1
+      },
+      "refund_by_refund_date": {
+        "2026-10-12": 1
+      },
+      "refund_by_profile": {
+        "RETURN-DEFECT": 1
+      },
       "net_sales": 387000,
       "refund_ratio": 0.08293838862559241,
       "unit_price_per_item": 42200.0,
@@ -70,11 +127,37 @@
     "fact_refund": 3,
     "total_sales": 1266000,
     "refund_amount": 105000,
+    "refund_quantity": 3,
     "paid_item_count": 30,
     "paying_customers": 18,
+    "sales_item_by_payment_date": {
+      "2026-10-12": 30
+    },
+    "sales_item_by_payment_method": {
+      "BANK_TRANSFER": 3,
+      "CARD": 18,
+      "EASY_PAY": 6,
+      "VIRTUAL_ACCOUNT": 3
+    },
+    "refund_by_payment_date": {
+      "2026-10-12": 3
+    },
+    "refund_by_refund_date": {
+      "2026-10-12": 3
+    },
+    "refund_by_profile": {
+      "RETURN-DEFECT": 3
+    },
     "net_sales": 1161000,
     "refund_ratio": 0.08293838862559241,
     "unit_price_per_item": 42200.0,
     "average_order_value": 70333.33333333333
+  },
+  "dimensions": {
+    "dim_channel": 3,
+    "dim_payment_method": 5,
+    "dim_refund_profile": 10,
+    "dim_product": 15,
+    "dim_date": 1
   }
 }
