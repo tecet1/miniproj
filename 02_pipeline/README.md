@@ -1,26 +1,20 @@
-# 통합 수집·처리 파이프라인
+# 02_pipeline — 수신, Bronze, Silver
 
-- **변경: 기존 채널 A와 다채널 작업 폴더를 하나의 파이프라인으로 통합했다.**
-- **추가: A 원본 버전 처리와 상품 SCD Type 2 로컬 로직을 준비했다.**
+모든 채널(A/B/C)이 같은 경로를 쓴다: HTTP → Azure Functions → Event Hubs → Bronze → Silver.
 
-## 역할과 진행 순서
+| 폴더 | 내용 | 상태 |
+|---|---|---|
+| `ingestion/` | HTTP 수신(Function)과 Event Hubs 전송, 송신·도착 확인 스크립트 | 완료. 원격에서 72건 도착 확인 |
+| `bronze/` | Event Hubs → `commerce_poc.bronze.events` 적재와 대조 함수, 실행 노트북 | 완료. Databricks에서 72행 확인 |
+| `silver/` | Bronze → 공통 이벤트 → Silver 테이블·Quarantine. 채널별 변환은 `channels/`, 공통 처리는 별도 파일 | 진행 중. 채널 변환·행 단위 검증은 로컬 완료, Spark 적재는 뼈대와 테스트만 있음(구현·Databricks 실행 전) |
+| `tests/` | `bronze`, `contracts`, `ingestion`, `silver` 하위 폴더. 고정 입력과 독립 기대값으로 비교한다. | 로컬 실행 |
 
-- A부터 검증하고 B/C를 추가하되 수집·Bronze·Silver·Gold 책임으로 나눈다.
-- 기존 안내는 planning/에 보존했고, 실제 구현 상태는 아래와 같다.
+Gold는 아직 시작하지 않았다. 단계별 목표와 완료 조건은 `plans/`를 따른다.
 
-| 폴더 | 기능 / 상태 |
-|---|---|
-| ingestion | ~~A JSONL 송신: 미구현~~ **변경: 송신기·Function·GitHub 배포 준비 및 v1 실제 송신 확인** |
-| bronze | ~~새 입력 재검증 필요~~ **변경: 새 v1 원문 6건 적재 확인, 체크포인트 재시작 증거는 남음** |
-| silver | **변경: v1/v2 변환·Spark 타입·Quarantine·멱등 저장·노트북 준비. 원격 실행 미확인** |
-| gold | 전체 상품 변경 이력 기반 SCD2·시점 조회: 로컬 검증. Delta 저장 함수 원격 미검증 |
-| tests | 독립 기대 행·버전 오류·상품 변경·경계·재실행·충돌 검사 |
+## 실행 (프로젝트 루트, PowerShell)
 
-## Linear 관계
+```powershell
+python -m unittest discover -s .\02_pipeline\tests -v
+```
 
-- M2의 A 경로와 M3의 B/C 통합을 같은 코드 영역에서 진행한다.
-- 상품 이력은 Gold 모델에 연결하며, 현재 단계의 로컬 준비와 실제 Gold 적재를 구분한다.
-
-관련 기존 이슈: TEC-16 수집·Bronze, TEC-17 Silver, TEC-18 Gold, TEC-19 거래/재시작, TEC-20 B/C 통합.
-
-SCD는 전체 변경 이력 재계산으로 시작한다. 자동 스키마 추론·증분 SCD MERGE·동시 writer·원천 누락 대사·Backfill은 추가하지 않는다.
+Spark 로직은 로컬에서 검증하지 않는다. Databricks 노트북은 함수 호출만 하며 실행 결과를 확인하기 전에는 '미검증'으로 적는다.

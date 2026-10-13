@@ -15,8 +15,8 @@ sys.path.insert(0, str(ROOT / "02_pipeline" / "silver"))
 from channels import channel_c
 from conversion_error import ConversionError
 
-FIXTURE = ROOT / "01_contracts" / "data" / "fixtures" / "C" / "events.jsonl"
-EXPECTED = ROOT / "01_contracts" / "data" / "fixtures" / "expected" / "expected.json"
+FIXTURE = ROOT / "01_contracts" / "data_fixtures" / "C" / "events.jsonl"
+EXPECTED = ROOT / "01_contracts" / "data_fixtures" / "expected" / "expected.json"
 
 
 def utc(*args):

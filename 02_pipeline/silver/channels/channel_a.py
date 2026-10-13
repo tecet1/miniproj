@@ -27,7 +27,8 @@
 from datetime import UTC, datetime
 
 from conversion_error import ConversionError
-from fields import get_required, get_required_int, map_code
+from fields import (get_optional_str, get_required, get_required_dict_list, get_required_int,
+                    get_required_str, lookup, map_code)
 
 CHANNEL = "A"
 
@@ -67,10 +68,10 @@ def build_item(item: dict) -> dict:
     규칙  sku -> product_id, discount_amount -> item_discount. 필수 필드는 get_required, 정수 필드는 get_required_int.
     """
     return {
-        "order_item_id": get_required(item, "order_item_id"),
-        "product_id": get_required(item, "sku"),
-        "product_name": get_required(item, "product_name"),
-        "category": get_required(item, "category"),
+        "order_item_id": get_required_str(item, "order_item_id"),
+        "product_id": get_required_str(item, "sku"),
+        "product_name": get_optional_str(item, "product_name"),
+        "category": get_optional_str(item, "category"),
         "quantity": get_required_int(item, "quantity"),
         "unit_price": get_required_int(item, "unit_price"),
         "item_discount": get_required_int(item, "discount_amount"),
@@ -80,7 +81,7 @@ def build_order(raw: dict) -> dict:
     """order.created -> {shipping_fee, items}. items는 build_item을 각 행에 적용한다 (필수, 정수 검사)."""
     return {
         "shipping_fee": get_required_int(raw, "shipping_fee"),
-        "items": [build_item(item) for item in get_required(raw, "items")],
+        "items": [build_item(item) for item in get_required_dict_list(raw, "items")],
     }
 
 
@@ -95,7 +96,7 @@ def build_payment_succeeded(raw: dict) -> dict:
     규칙  method -> payment_method(map_code), amount -> payment_amount(get_required_int).
     """
     return {
-        "payment_id": get_required(raw, "payment_id"),
+        "payment_id": get_required_str(raw, "payment_id"),
         "payment_method": map_code(PAYMENT_METHODS, get_required(raw, "method")),
         "payment_amount": get_required_int(raw, "amount"),
         "fail_reason_code": None,
@@ -118,16 +119,17 @@ def build_refund(raw: dict) -> dict:
     규칙  amount -> refund_amount(get_required_int), type -> refund_type, reason -> refund_reason_code(map_code).
           type이 REFUND_TYPES에 없으면 ConversionError("INVALID_VALUE", ...).
     """
-    refund_type = get_required(raw, "type")
-    if refund_type not in REFUND_TYPES:                       # 환불 유형만 OTHER 없이 격리
-        raise ConversionError("INVALID_VALUE", f"type={refund_type!r}")
+    raw_type = get_required(raw, "type")
+    refund_type = lookup(REFUND_TYPES, raw_type)
+    if refund_type is None:                                   # 환불 유형만 OTHER 없이 격리
+        raise ConversionError("INVALID_VALUE", f"type={raw_type!r}")
     return {
-        "refund_id": get_required(raw, "refund_id"),
-        "payment_id": get_required(raw, "payment_id"),
-        "order_item_id": get_required(raw, "order_item_id"),
+        "refund_id": get_required_str(raw, "refund_id"),
+        "payment_id": get_required_str(raw, "payment_id"),
+        "order_item_id": get_required_str(raw, "order_item_id"),
         "refund_quantity": get_required_int(raw, "refund_quantity"),
         "refund_amount": get_required_int(raw, "amount"),
-        "refund_type": REFUND_TYPES[refund_type],
+        "refund_type": refund_type,
         "refund_reason_code": map_code(REASONS, raw.get("reason")),
     }
 
@@ -153,15 +155,15 @@ def to_event(raw: dict) -> dict:
       3. BUILDERS[공통 event_type](raw)의 결과를 공통 필드에 합쳐 돌려준다.
     """
     code = get_required(raw, "event_type")
-    if code not in EVENT_TYPES:
-        raise ConversionError("UNKNOWN_EVENT_TYPE", code)
-    event_type = EVENT_TYPES[code]
+    event_type = lookup(EVENT_TYPES, code)
+    if event_type is None:
+        raise ConversionError("UNKNOWN_EVENT_TYPE", repr(code))
     common = {
-        "event_id": get_required(raw, "event_id"),
+        "event_id": get_required_str(raw, "event_id"),
         "event_type": event_type,
         "channel": CHANNEL,
-        "order_id": get_required(raw, "order_id"),
-        "user_id": raw.get("user_id"),                        # 비로그인(null)은 그대로 통과
+        "order_id": get_required_str(raw, "order_id"),
+        "user_id": get_optional_str(raw, "user_id"),          # 비로그인(null, 빈 문자열)은 None
         "event_time": parse_time(get_required(raw, "occurred_at")),                                    # parse_time(get_required(raw, "occurred_at"))
     }
     return {**common, **BUILDERS[event_type](raw)}            # 공통 필드 + 유형별 필드 합치기

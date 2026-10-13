@@ -9,7 +9,7 @@ from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_FIXTURES = ROOT / "01_contracts" / "data" / "fixtures"
+DEFAULT_FIXTURES = ROOT / "01_contracts" / "data_fixtures"
 sys.path.insert(0, str(ROOT / "02_pipeline" / "ingestion"))
 
 from verify_arrival import compare, load_expected  # noqa: E402

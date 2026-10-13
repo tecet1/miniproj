@@ -24,19 +24,18 @@ expected.py: scenarios.json, skus.json 만 읽어 기대값 계산 (위 모듈�
 | `generate` | 줄 만들기와 파일 쓰기 | `{"channel","payload"}` 한 줄 |
 | `expected` | 독립 기대값 | 생성기와 로직을 공유하지 않는다 |
 
-## 구현 순서
+## 모듈과 테스트
 
-앞 모듈일수록 다른 모듈에 의존하지 않는다. 한 단계씩 테스트를 통과시키며 진행한다.
-함수 본문의 `raise NotImplementedError`를 지우고 구현한다. 테스트는 수정하지 않는다.
+앞 모듈일수록 다른 모듈에 의존하지 않는다. 모든 모듈이 구현되어 있고 테스트는 `02_pipeline/tests/contracts`에 있다.
 
-| 순서 | 모듈 | 통과시킬 테스트 |
+| 순서 | 모듈 | 테스트 |
 |---|---|---|
 | 1 | `timeutil.py` | `test_timeutil` |
 | 2 | `pricing.py` | `test_pricing` |
 | 3 | `scenario_loader.py` | `test_scenario_loader` |
 | 4 | `scenario_validator.py` | `test_scenario_validator` |
 | 5 | `canonical.py` | `test_canonical` |
-| 6 | `channel_a.py` → `channel_b.py` → `channel_c.py` | `test_channel_a`, `test_channel_b`, `test_channel_c` |
+| 6 | `channel_a.py`, `channel_b.py`, `channel_c.py` | `test_channel_a`, `test_channel_b`, `test_channel_c` |
 | 7 | `faults.py` | `test_faults` |
 | 8 | `generate.py` | `test_generate` |
 | 9 | `expected.py` | `test_expected` |
@@ -50,7 +49,7 @@ python -m unittest discover -s .\02_pipeline\tests\contracts -p "test_timeutil.p
 # 계약 테스트 전체
 python -m unittest discover -s .\02_pipeline\tests\contracts -v
 
-# 이벤트 생성 (8단계 완료 후)
+# 이벤트 생성
 python .\01_contracts\src\generate.py
 ```
 

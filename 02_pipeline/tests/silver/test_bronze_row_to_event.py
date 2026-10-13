@@ -1,4 +1,4 @@
-"""bronze_row_to_event.py 테스트. 고정 입력 72줄(A·B·C 각 24줄) 전체를 변환해 expected.json과 비교한다."""
+"""silver_row_to_event.py 테스트. 고정 입력 72줄(A·B·C 각 24줄) 전체를 변환해 expected.json과 비교한다."""
 import json
 import sys
 import unittest
@@ -9,9 +9,9 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "02_pipeline" / "silver"))
 
 from conversion_error import ConversionError
-from bronze_row_to_event import to_common_event
+from silver_row_to_event import to_common_event
 
-FIXTURES = ROOT / "01_contracts" / "data" / "fixtures"
+FIXTURES = ROOT / "01_contracts" / "data_fixtures"
 EXPECTED = FIXTURES / "expected" / "expected.json"
 
 

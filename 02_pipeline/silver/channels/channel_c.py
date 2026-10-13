@@ -19,7 +19,8 @@
 from datetime import UTC, datetime, timedelta, timezone
 
 from conversion_error import ConversionError
-from fields import get_required, get_required_int, map_code
+from fields import (get_optional_str, get_required, get_required_dict_list, get_required_int,
+                    get_required_str, lookup, map_code)
 
 CHANNEL = "C"
 KST = timezone(timedelta(hours=9))   # 한국은 서머타임이 없어 고정 오프셋으로 충분하다 (표준 라이브러리만 사용)
@@ -49,7 +50,7 @@ def parse_time(text: str) -> datetime:
 
 def read_user_id(raw: dict):
     """mem_no를 돌려준다. 빈 문자열이거나 없으면 None. 오류가 아니다."""
-    return raw.get("mem_no") or None
+    return get_optional_str(raw, "mem_no")
 
 
 def make_item_id(order_no: str, seq: int) -> str:
@@ -62,9 +63,9 @@ def build_item(order_no: str, item: dict) -> dict:
     """lines[] 한 건 -> 공통 상품 행. order_item_id는 주문 번호와 seq로 만든다."""
     return {
         "order_item_id": make_item_id(order_no, get_required_int(item, "seq")),
-        "product_id": get_required(item, "goods_cd"),
-        "product_name": get_required(item, "goods_nm"),
-        "category": get_required(item, "cate_nm"),
+        "product_id": get_required_str(item, "goods_cd"),
+        "product_name": get_optional_str(item, "goods_nm"),
+        "category": get_optional_str(item, "cate_nm"),
         "quantity": get_required_int(item, "qty"),
         "unit_price": get_required_int(item, "price"),
         "item_discount": get_required_int(item, "dc_amt"),
@@ -73,10 +74,10 @@ def build_item(order_no: str, item: dict) -> dict:
 
 def build_order(raw: dict) -> dict:
     """O01 -> {shipping_fee, items}."""
-    order_no = get_required(raw, "ord_no")
+    order_no = get_required_str(raw, "ord_no")
     return {
         "shipping_fee": get_required_int(raw, "dlv_amt"),
-        "items": [build_item(order_no, item) for item in get_required(raw, "lines")],
+        "items": [build_item(order_no, item) for item in get_required_dict_list(raw, "lines")],
     }
 
 
@@ -88,7 +89,7 @@ def build_cancel(raw: dict) -> dict:
 def build_payment_succeeded(raw: dict) -> dict:
     """P01 -> {payment_id, payment_method, payment_amount, fail_reason_code: None}."""
     return {
-        "payment_id": get_required(raw, "pay_no"),
+        "payment_id": get_required_str(raw, "pay_no"),
         "payment_method": map_code(PAYMENT_METHODS, get_required(raw, "pay_type")),
         "payment_amount": get_required_int(raw, "pay_amt"),
         "fail_reason_code": None,
@@ -104,16 +105,17 @@ def build_payment_failed(raw: dict) -> dict:
 
 def build_refund(raw: dict) -> dict:
     """R01 -> 환불 필드. clm_tp가 REFUND_TYPES에 없으면 INVALID_VALUE. order_item_id는 ord_no + seq."""
-    refund_type = get_required(raw, "clm_tp")
-    if refund_type not in REFUND_TYPES:
-        raise ConversionError("INVALID_VALUE", f"clm_tp={refund_type!r}")
+    raw_type = get_required(raw, "clm_tp")
+    refund_type = lookup(REFUND_TYPES, raw_type)
+    if refund_type is None:
+        raise ConversionError("INVALID_VALUE", f"clm_tp={raw_type!r}")
     return {
-        "refund_id": get_required(raw, "rfd_no"),
-        "payment_id": get_required(raw, "pay_no"),
-        "order_item_id": make_item_id(get_required(raw, "ord_no"), get_required_int(raw, "seq")),
+        "refund_id": get_required_str(raw, "rfd_no"),
+        "payment_id": get_required_str(raw, "pay_no"),
+        "order_item_id": make_item_id(get_required_str(raw, "ord_no"), get_required_int(raw, "seq")),
         "refund_quantity": get_required_int(raw, "rfd_qty"),
         "refund_amount": get_required_int(raw, "rfd_amt"),
-        "refund_type": REFUND_TYPES[refund_type],
+        "refund_type": refund_type,
         "refund_reason_code": map_code(REASONS, raw.get("rsn_cd")),
     }
 
@@ -137,14 +139,14 @@ def to_event(raw: dict) -> dict:
       3. BUILDERS[event_type](raw)의 결과를 합쳐 돌려준다.
     """
     code = get_required(raw, "evt_cd")
-    if code not in EVENT_TYPES:
-        raise ConversionError("UNKNOWN_EVENT_TYPE", code)
-    event_type = EVENT_TYPES[code]
+    event_type = lookup(EVENT_TYPES, code)
+    if event_type is None:
+        raise ConversionError("UNKNOWN_EVENT_TYPE", repr(code))
     common = {
-        "event_id": get_required(raw, "evt_id"),
+        "event_id": get_required_str(raw, "evt_id"),
         "event_type": event_type,
         "channel": CHANNEL,
-        "order_id": get_required(raw, "ord_no"),
+        "order_id": get_required_str(raw, "ord_no"),
         "user_id": read_user_id(raw),
         "event_time": parse_time(get_required(raw, "evt_dt")),
     }

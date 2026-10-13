@@ -1,6 +1,6 @@
 # 이벤트 명세 (01_contracts/contracts)
 
-> 상태: 초안. 2026-10-12 환불 수량 필드(`refund_quantity`)와 구현된 Bronze 컬럼·채널 전달 방식(요청 경로)을 반영했다. 5절은 미확정 항목이다.
+> 상태: 초안. 2026-10-12 환불 수량 필드(`refund_quantity`)와 구현된 Bronze 컬럼·채널 전달 방식(요청 경로)을 반영했다. 2026-10-13 결제 ID 정의(1.2절)와 Silver 테이블 키·컬럼(1.3절)을 반영했다. 5절은 미확정 항목이다.
 
 ## 0. 적용 원칙
 
@@ -52,9 +52,9 @@ Function은 payload를 해석하지 않고 `{"channel","received_at","payload"}`
 | items[].unit_price | INT | Y | 단가 |
 | items[].item_discount | INT | Y | 상품 단위 할인 합계 (0 이상, 단가×수량 이하) |
 
-상품금액 = `unit_price × quantity − item_discount` (Silver에서 계산).
+상품금액 = `unit_price × quantity − item_discount` (Gold에서 계산한다. Silver `order_items`에는 저장하지 않는다).
 
-**ORDER_CANCELLED** — 주문 취소 (결제 전)
+**ORDER_CANCELLED** — 주문 취소 (결제 전). 주문 전체(주문상품 전체)에 대해서만 발생하며 상품 단위 주문 취소는 없다. 결제 후 상품 단위 처리는 환불 이벤트로 한다.
 
 | 필드 | 타입 | 필수 | 설명 |
 |---|---|---|---|
@@ -64,7 +64,7 @@ Function은 payload를 해석하지 않고 `{"channel","received_at","payload"}`
 
 | 필드 | 타입 | 필수 | 설명 |
 |---|---|---|---|
-| payment_id | STRING | Y | 결제 시도 ID (채널 내 유일) |
+| payment_id | STRING | Y | 결제 ID. 같은 결제의 실패·성공 이벤트가 같은 ID를 가질 수 있어 채널 안에서 유일하지 않다. 이벤트는 `event_id`로 구분한다. 생성기는 현재 시도마다 새 ID를 쓴다 |
 | payment_method | STRING | Y | `CARD` `EASY_PAY` `BANK_TRANSFER` `VIRTUAL_ACCOUNT` `OTHER` |
 | payment_amount | INT | Y | 결제 요청/승인 금액 (배송비 포함, 할인 반영 후) |
 | fail_reason_code | STRING | 실패 시 Y | `LIMIT_EXCEEDED` `CARD_DECLINED` `TIMEOUT` `OTHER` |
@@ -83,6 +83,25 @@ Function은 payload를 해석하지 않고 `{"channel","received_at","payload"}`
 
 공통 사유 코드: `CHANGE_OF_MIND` `DEFECT` `WRONG_ITEM` `DELAY` `OTHER`
 
+### 1.3 Silver 테이블
+
+Silver는 이벤트를 채널별 행동 맥락으로 해석해 이벤트 유형별 테이블에 쌓는다. 행동 테이블의 단위(grain)는 이벤트 1건이며 PK는 `(channel, event_id)`다. 같은 주문·결제·환불 ID에 이벤트가 여러 번 올 수 있어 업무 ID는 PK가 아니다. `order_items`만 상품 행 단위다. `channel`은 모든 테이블에 있다.
+
+| 테이블 | 원천 이벤트 | PK | 컬럼 (`channel`, PK의 `event_id` 제외) |
+|---|---|---|---|
+| orders | ORDER_CREATED | channel, event_id | order_id, user_id, shipping_fee, order_created_at, received_at |
+| order_items | ORDER_CREATED의 items[] | channel, order_item_id | order_id(FK → orders), product_id, product_name, category, quantity, unit_price, item_discount |
+| order_cancellations | ORDER_CANCELLED | channel, event_id | order_id, user_id, cancel_reason_code, cancel_created_at, received_at |
+| payments | PAYMENT_SUCCEEDED, PAYMENT_FAILED | channel, event_id | order_id, user_id, payment_id, status, payment_method, payment_amount, payment_fail_reason_code, payment_created_at, received_at |
+| refunds | REFUND_SUCCEEDED | channel, event_id | order_id, user_id, refund_id, payment_id, order_item_id, refund_quantity, refund_amount, refund_type, refund_reason_code, refund_created_at, received_at |
+| quarantine | 검증 실패 | eh_partition, eh_offset | 4절 Quarantine 컬럼 |
+
+- **컬럼 이름:** 시각은 `{행동}_created_at`, 사유는 `{행동}_reason_code`다. `*_created_at`은 업무 발생 시각(공통 모델의 `event_time`, UTC)이며 적재 시각이 아니다. 결제 실패 사유는 `payment_fail_reason_code`다. 공통 모델 필드명(1.1·1.2절)은 그대로 두고 테이블에 쓸 때만 이름을 바꾼다.
+- **`payments.status`:** `SUCCEEDED` 또는 `FAILED`다. 결제 성공 여부는 이 값으로 가른다.
+- **`received_at`:** `order_items`를 뺀 모든 이벤트 테이블에 있다. `order_items`는 같은 이벤트에서 나온 `orders` 행을 따른다.
+- **중복 제거:** 이벤트 단위로 `(channel, event_id)`를 먼저 제거한 뒤 테이블로 나눈다. 주문 생성 이벤트만 그 뒤에 `orders` 1행과 `order_items` N행으로 펼치며, `order_items`는 `(channel, order_item_id)`로 쓴다. `event_id`는 채널 안에서 이벤트 종류와 관계없이 유일하다고 가정한다(생성기가 보장).
+- **업무 ID 참조:** `order_id`·`payment_id`·`refund_id`로 이어지는 참조는 Gold에서 푼다. `payment_id`는 `status = SUCCEEDED` 행을 기준으로 한다.
+
 ---
 
 ## 2. 채널별 원본 형식
@@ -94,7 +113,7 @@ Function은 payload를 해석하지 않고 `{"channel","received_at","payload"}`
 | 필드 표기 | snake_case, 평면+items 배열 | camelCase, 중첩 객체 | 약어 snake_case |
 | 시간 형식 | ISO 8601 UTC (`2026-10-12T01:23:45.123Z`) | epoch 밀리초 (UTC) | `yyyy-MM-dd HH:mm:ss` **KST, 시간대 표기 없음** |
 | 이벤트 구분 필드 | `event_type` | `eventName` | `evt_cd` |
-| 비로그인 | `user_id: null` | `buyer.memberId` 없음 | `mem_no: ""` (빈 문자열) |
+| 비로그인 | `user_id: null` 또는 `""` | `buyer.memberId` 없음 | `mem_no: ""` (빈 문자열) |
 | 금액 | 정수 | 정수 | 정수 |
 
 ### 2.1 이벤트 종류 매핑
@@ -212,7 +231,7 @@ Function은 payload를 해석하지 않고 `{"channel","received_at","payload"}`
 ## 4. 처리 규칙
 
 **중복·순서**
-- 중복 제거 키: `channel + event_id`. 동일 키가 다시 오면 무시(멱등).
+- 중복 제거 키: `channel + event_id`. 동일 키가 다시 오면 무시(멱등). 키는 이벤트 단위이며 테이블 PK는 1.3절을 따른다.
 - "최초 건"은 `received_at`이 이른 행, 같으면 `(eh_partition, eh_offset)`이 작은 행이다. 같은 키가 다시 오면 최초 건만 남기고 나머지는 무시한다.
 - 같은 `event_id`에 내용이 다른 경우: 최초 건 유지는 같다. 충돌 건을 Quarantine(`DUPLICATE_CONFLICT`)으로 격리하는 것은 **PoC에서 구현하지 않는다(후속).** 판정에 내용 해시 컬럼 또는 이벤트 원장이 필요하고 시나리오·기대값도 없기 때문이다.
 - 결제가 주문보다 먼저 와도 격리하지 않음. Gold에서 `order_id`로 조인.
@@ -224,9 +243,9 @@ Function은 payload를 해석하지 않고 `{"channel","received_at","payload"}`
 |---|---|
 | `MALFORMED_JSON` | 파싱 불가 |
 | `UNKNOWN_EVENT_TYPE` | 매핑표에 없는 이벤트 코드 |
-| `MISSING_REQUIRED` | 필수 필드 누락 |
-| `INVALID_TYPE` | 정수/시간 형식 오류 |
-| `INVALID_VALUE` | 음수 금액, 수량 0 이하, 할인 > 단가×수량, 매핑에 없는 환불 유형 |
+| `MISSING_REQUIRED` | 필수 필드 누락, 필수 ID 필드(`event_id`, `order_id`, 상품·결제·환불 ID 등)가 null 또는 빈 문자열, 주문의 `items`가 비어 있음 |
+| `INVALID_TYPE` | 정수/시간 형식 오류, ID 필드가 문자열이 아님, `items`가 객체 배열이 아님 |
+| `INVALID_VALUE` | 음수 금액, 수량 0 이하, 할인 > 단가×수량, 매핑에 없는 환불 유형, 기준 데이터(`skus.json`)에 없는 `product_id` |
 | `UNKNOWN_CHANNEL` | channel이 A/B/C 아님 |
 | `DUPLICATE_CONFLICT` | 같은 event_id, 다른 내용 (후속, PoC 미구현) |
 
@@ -234,17 +253,21 @@ Function은 payload를 해석하지 않고 `{"channel","received_at","payload"}`
 `channel`, `received_at`, `payload`, `eh_partition`, `eh_offset`, `eh_enqueued_at`, `ingested_at`(Bronze와 같은 값·이름) + `reason_code`, `quarantined_at`(격리 시각). 키는 `(eh_partition, eh_offset)`.
 
 **지표와의 연결**
-- 결제일 귀속: `PAYMENT_SUCCEEDED.event_time` 기준. 환불은 `payment_id`로 원결제일에 귀속.
+- 결제일 귀속: `PAYMENT_SUCCEEDED.event_time` 기준. 환불은 `payment_id`가 가리키는 결제 성공 행으로 원결제일에 귀속.
 - 총판매금액: 결제 성공 건의 상품금액 합. 순판매금액 = 총판매금액 − 환불금액.
 - 결제고객수: 결제 성공 이벤트의 `channel + user_id` distinct (`user_id` null 제외, 이후 취소·반품 포함).
 - 상품결제건수: 결제 성공 주문의 상품 행 수(item 단위).
 
 ---
 
-## 5. 확정이 필요한 항목
+## 5. 확정한 항목 (2026-10-13)
 
-1. **결제 1건이 여러 상품을 포함하는 경우**: `payment_amount`를 주문 전체 금액으로 두고, 상품별 총판매금액은 Gold에서 `상품금액`으로 계산하는 안을 전제함. 맞는지 확인 필요.
-2. **부분 결제/분할 결제**: 한 주문에 결제 성공 2건 이상이 가능하다고 보되, 생성기는 PoC 1차에서 주문당 성공 1건만 생성할지 결정 필요.
-3. **취소 단위**: 주문 취소는 주문 전체만 허용(상품별 취소는 환불로 처리)하는 안.
-4. **배송비 환불**: 환불은 상품 단위만 두고 배송비 환불은 제외하는 안. 순매출 정의와 연결됨.
-5. **채널 A/B/C 형식 차이의 정도**: 위 차이(필드명·시간·코드)가 과한지, 더 단순화할지.
+| 항목 | 결정 |
+|---|---|
+| 결제 1건이 여러 상품을 포함 | 상품별 총판매금액은 Gold에서 `order_items`의 상품금액을 `product_id`(SKU)로 상품에 매핑해 계산한다. `payment_amount`는 그 결제 1건의 금액이다. |
+| 부분·분할 결제 | 한 주문에 결제 성공 2건 이상을 허용한다. 생성기는 PoC 1차에서 주문당 성공 1건만 만든다. 주문별 성공 결제금액 합은 상품금액 합 + 배송비와 같아야 하며, 이 대조는 테이블 간 규칙이라 Gold에서 검증한다. |
+| 취소 단위 | 주문 취소는 주문 전체(주문상품 전체)만 허용한다. 상품별 취소는 없다. |
+| 배송비 환불 | 환불은 상품 단위만 두고 배송비 환불은 제외한다. 순판매금액은 상품금액 기준이다. |
+| 채널 A/B/C 형식 차이 | 현재 수준(필드명·시간·코드)을 유지한다. |
+
+**남은 결정 (Gold 설계 시):** 결제 성공이 2건 이상인 주문에서 `fact_sales_item`의 `payment_id`·`payment_at`(결제일 귀속)을 어느 결제로 잡을지.

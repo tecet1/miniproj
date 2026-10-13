@@ -82,11 +82,11 @@ def _add_metrics(counts: dict) -> dict:
 
 
 def main() -> None:
-    """compute_expected 결과를 01_contracts/data/fixtures/expected/expected.json 에 쓴다."""
+    """compute_expected 결과를 01_contracts/data_fixtures/expected/expected.json 에 쓴다."""
     contracts = ROOT / "01_contracts" / "contracts"
     scenarios = json.loads((contracts / "scenarios.json").read_text(encoding="utf-8"))["scenarios"]
     skus = json.loads((contracts / "skus.json").read_text(encoding="utf-8"))["skus"]
-    out = ROOT / "01_contracts" / "data" / "fixtures" / "expected" / "expected.json"
+    out = ROOT / "01_contracts" / "data_fixtures" / "expected" / "expected.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(compute_expected(scenarios, skus), ensure_ascii=False, indent=2)
     out.write_text(text + "\n", encoding="utf-8", newline="\n")

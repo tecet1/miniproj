@@ -29,9 +29,26 @@ def parse_payload(payload: str) -> dict:
 
     힌트: json.loads가 내는 오류는 ValueError(JSONDecodeError 포함). payload가 None이면 TypeError가 난다.
     """
-    raise NotImplementedError
-
+    try:
+        obj = json.loads(payload)
+    except (ValueError, TypeError):
+        raise ConversionError("MALFORMED_JSON", payload)
+    if not isinstance(obj, dict):
+        raise ConversionError("MALFORMED_JSON", payload)
+    return obj
 
 def to_common_event(channel: str, payload: str) -> dict:
     """위 순서대로 처리해 공통 이벤트를 돌려준다."""
-    raise NotImplementedError
+    # 1. channel이 A/B/C가 아님
+    if channel not in CONVERTERS:
+        raise ConversionError("UNKNOWN_CHANNEL", payload)
+
+    # 2. payload가 JSON이 아님 또는 객체가 아님
+    obj = parse_payload(payload)
+
+    # 3. 채널 변환 실패
+    event = CONVERTERS[channel](obj) 
+
+    # 4. 값 범위 검사 실패
+    validate_event_values(event)
+    return event

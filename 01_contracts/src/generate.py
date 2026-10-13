@@ -52,12 +52,12 @@ def write_fixtures(out_dir, scenarios: list[dict], skus: dict[str, dict]) -> Non
 
 
 def main(argv=None) -> None:
-    """명령줄 실행. 기본 입력은 01_contracts/contracts, 기본 출력은 01_contracts/data/fixtures.
+    """명령줄 실행. 기본 입력은 01_contracts/contracts, 기본 출력은 01_contracts/data_fixtures.
 
     순서: 파일 읽기(scenario_loader) -> scenario_validator.validate_scenarios -> write_fixtures.
     """
     parser = argparse.ArgumentParser(description="채널별 events.jsonl 생성")
-    parser.add_argument("--out", default=ROOT / "01_contracts" / "data" / "fixtures", type=Path)
+    parser.add_argument("--out", default=ROOT / "01_contracts" / "data_fixtures", type=Path)
     args = parser.parse_args(argv)
 
     contracts = ROOT / "01_contracts" / "contracts"

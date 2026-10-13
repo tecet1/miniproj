@@ -46,7 +46,7 @@ Event Hubs의 봉투 메시지를 원본 그대로 Bronze 단일 테이블에 �
 ## 완료 조건
 
 - Bronze 행 수 = 이번 송신분 72건 (채널별 24건). 중복(S19) 2건과 S21 변형 3건×3채널이 모두 포함된다.
-- `(channel, payload)` 멀티셋이 `01_contracts/data/fixtures/{A,B,C}/events.jsonl`과 같다.
+- `(channel, payload)` 멀티셋이 `01_contracts/data_fixtures/{A,B,C}/events.jsonl`과 같다.
 - `received_at`이 모든 행에 있고, `(eh_partition, eh_offset)`이 중복되지 않는다.
 - 재실행 후 행 수가 그대로다.
 - 저장소에 키·연결 문자열이 없다.

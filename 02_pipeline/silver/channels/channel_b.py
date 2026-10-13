@@ -19,7 +19,8 @@
 from datetime import UTC, datetime, timedelta
 
 from conversion_error import ConversionError
-from fields import get_required, get_required_dict, get_required_int, map_code
+from fields import (get_optional_str, get_required, get_required_dict, get_required_dict_list, get_required_int,
+                    get_required_str, lookup, map_code)
 
 CHANNEL = "B"
 
@@ -53,17 +54,17 @@ def parse_time(epoch_ms: int) -> datetime:
 def read_user_id(raw: dict):
     """buyer.memberId를 돌려준다. buyer가 없거나 dict가 아니거나 memberId가 없으면 None. 오류가 아니다."""
     buyer = raw.get("buyer")
-    return buyer.get("memberId") if isinstance(buyer, dict) else None
+    return get_optional_str(buyer, "memberId") if isinstance(buyer, dict) else None
 
 
 # ── 이벤트 유형별 필드: raw -> 그 유형에만 있는 공통 필드 dict ────────────────────────────
 def build_item(item: dict) -> dict:
     """orderItems[] 한 건 -> 공통 상품 행. discount.total은 중첩 객체 안의 값이다."""
     return {
-        "order_item_id": get_required(item, "lineId"),
-        "product_id": get_required(item, "sellerSku"),
-        "product_name": get_required(item, "itemName"),
-        "category": get_required(item, "categoryName"),
+        "order_item_id": get_required_str(item, "lineId"),
+        "product_id": get_required_str(item, "sellerSku"),
+        "product_name": get_optional_str(item, "itemName"),
+        "category": get_optional_str(item, "categoryName"),
         "quantity": get_required_int(item, "qty"),
         "unit_price": get_required_int(item, "unitPrice"),
         "item_discount": get_required_int(get_required_dict(item, "discount"), "total"),
@@ -74,7 +75,7 @@ def build_order(raw: dict) -> dict:
     """ORDER_PLACED -> {shipping_fee, items}. shipping_fee는 delivery 객체 안의 fee."""
     return {
         "shipping_fee": get_required_int(get_required_dict(raw, "delivery"), "fee"),
-        "items": [build_item(item) for item in get_required(raw, "orderItems")],
+        "items": [build_item(item) for item in get_required_dict_list(raw, "orderItems")],
     }
 
 
@@ -86,7 +87,7 @@ def build_cancel(raw: dict) -> dict:
 def build_payment_succeeded(raw: dict) -> dict:
     """PAY_APPROVED -> {payment_id, payment_method, payment_amount, fail_reason_code: None}."""
     return {
-        "payment_id": get_required(raw, "paymentId"),
+        "payment_id": get_required_str(raw, "paymentId"),
         "payment_method": map_code(PAYMENT_METHODS, get_required(raw, "payMethod")),
         "payment_amount": get_required_int(raw, "paidAmount"),
         "fail_reason_code": None,
@@ -102,16 +103,17 @@ def build_payment_failed(raw: dict) -> dict:
 
 def build_refund(raw: dict) -> dict:
     """REFUND_DONE -> 환불 필드. claimType이 REFUND_TYPES에 없으면 INVALID_VALUE."""
-    refund_type = get_required(raw, "claimType")
-    if refund_type not in REFUND_TYPES:
-        raise ConversionError("INVALID_VALUE", f"claimType={refund_type!r}")
+    raw_type = get_required(raw, "claimType")
+    refund_type = lookup(REFUND_TYPES, raw_type)
+    if refund_type is None:
+        raise ConversionError("INVALID_VALUE", f"claimType={raw_type!r}")
     return {
-        "refund_id": get_required(raw, "refundId"),
-        "payment_id": get_required(raw, "paymentId"),
-        "order_item_id": get_required(raw, "lineId"),
+        "refund_id": get_required_str(raw, "refundId"),
+        "payment_id": get_required_str(raw, "paymentId"),
+        "order_item_id": get_required_str(raw, "lineId"),
         "refund_quantity": get_required_int(raw, "refundQty"),
         "refund_amount": get_required_int(raw, "refundAmount"),
-        "refund_type": REFUND_TYPES[refund_type],
+        "refund_type": refund_type,
         "refund_reason_code": map_code(REASONS, raw.get("claimReason")),
     }
 
@@ -135,14 +137,14 @@ def to_event(raw: dict) -> dict:
       3. BUILDERS[event_type](raw)의 결과를 합쳐 돌려준다.
     """
     code = get_required(raw, "eventName")
-    if code not in EVENT_TYPES:
-        raise ConversionError("UNKNOWN_EVENT_TYPE", code)
-    event_type = EVENT_TYPES[code]
+    event_type = lookup(EVENT_TYPES, code)
+    if event_type is None:
+        raise ConversionError("UNKNOWN_EVENT_TYPE", repr(code))
     common = {
-        "event_id": get_required(raw, "eventId"),
+        "event_id": get_required_str(raw, "eventId"),
         "event_type": event_type,
         "channel": CHANNEL,
-        "order_id": get_required(raw, "orderNo"),
+        "order_id": get_required_str(raw, "orderNo"),
         "user_id": read_user_id(raw),
         "event_time": parse_time(get_required_int(raw, "occurredAtMs")),
     }

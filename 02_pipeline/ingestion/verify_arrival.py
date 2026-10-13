@@ -17,7 +17,7 @@ from pathlib import Path
 
 CHANNELS = ("A", "B", "C")
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_FIXTURES = ROOT / "01_contracts" / "data" / "fixtures"
+DEFAULT_FIXTURES = ROOT / "01_contracts" / "data_fixtures"
 
 
 def load_expected(fixtures_dir) -> Counter:
