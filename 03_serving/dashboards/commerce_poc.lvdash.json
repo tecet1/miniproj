@@ -444,7 +444,6 @@
     {
       "name": "968ba9c4",
       "displayName": "판매",
-      "pageType": "PAGE_TYPE_CANVAS",
       "layout": [
         {
           "widget": {
@@ -1046,12 +1045,12 @@
             "height": 5
           }
         }
-      ]
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
     },
     {
       "name": "baa879f1",
       "displayName": "환불",
-      "pageType": "PAGE_TYPE_CANVAS",
       "layout": [
         {
           "widget": {
@@ -1361,19 +1360,19 @@
             "height": 5
           }
         }
-      ]
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
     },
     {
       "name": "7a779051",
       "displayName": "필터",
-      "pageType": "PAGE_TYPE_GLOBAL_FILTERS",
       "layout": [
         {
           "widget": {
             "name": "15139bdf",
             "queries": [
               {
-                "name": "param_91e13a26_date_range",
+                "name": "parameter_dashboards/01f1c6e0259d1974a6e5d38b699b0b23/datasets/01f1c6e3974f1b76bab84cb53afcdeac_date_range",
                 "query": {
                   "datasetName": "2287e411",
                   "parameters": [
@@ -1386,7 +1385,7 @@
                 }
               },
               {
-                "name": "param_d0d0f6ee_date_range",
+                "name": "parameter_dashboards/01f1c6e0259d1974a6e5d38b699b0b23/datasets/01f1c6e3974f1b82a7b69ea4a173f060_date_range",
                 "query": {
                   "datasetName": "08ddd66c",
                   "parameters": [
@@ -1399,7 +1398,7 @@
                 }
               },
               {
-                "name": "param_8e9950b9_date_range",
+                "name": "parameter_dashboards/01f1c6e0259d1974a6e5d38b699b0b23/datasets/01f1c6e3974f1b83ae9a75faf602c82c_date_range",
                 "query": {
                   "datasetName": "50ae0c69",
                   "parameters": [
@@ -1412,7 +1411,7 @@
                 }
               },
               {
-                "name": "param_09c4f941_date_range",
+                "name": "parameter_dashboards/01f1c6e0259d1974a6e5d38b699b0b23/datasets/01f1c6e3974f1b84bc5f03cbacf0ba85_date_range",
                 "query": {
                   "datasetName": "82ba6cf0",
                   "parameters": [
@@ -1425,7 +1424,7 @@
                 }
               },
               {
-                "name": "param_0b74fe8b_date_range",
+                "name": "parameter_dashboards/01f1c6e0259d1974a6e5d38b699b0b23/datasets/01f1c6e3974f1b85921c5b0515275d76_date_range",
                 "query": {
                   "datasetName": "73337f11",
                   "parameters": [
@@ -1438,7 +1437,7 @@
                 }
               },
               {
-                "name": "param_b830c738_date_range",
+                "name": "parameter_dashboards/01f1c6e0259d1974a6e5d38b699b0b23/datasets/01f1c6e3974f1b869f31ee9366486a0b_date_range",
                 "query": {
                   "datasetName": "68e4e686",
                   "parameters": [
@@ -1451,7 +1450,7 @@
                 }
               },
               {
-                "name": "param_9c3bd453_date_range",
+                "name": "parameter_dashboards/01f1c6e0259d1974a6e5d38b699b0b23/datasets/01f1c6e3974f1b87a519c1d4aa1dee80_date_range",
                 "query": {
                   "datasetName": "e67f8ebe",
                   "parameters": [
@@ -1464,7 +1463,7 @@
                 }
               },
               {
-                "name": "param_d63bd997_date_range",
+                "name": "parameter_dashboards/01f1c6e0259d1974a6e5d38b699b0b23/datasets/01f1c6e3974f1b889ae5be70b61ccabe_date_range",
                 "query": {
                   "datasetName": "62566ebc",
                   "parameters": [
@@ -1477,7 +1476,7 @@
                 }
               },
               {
-                "name": "param_2929edbd_date_range",
+                "name": "parameter_dashboards/01f1c6e0259d1974a6e5d38b699b0b23/datasets/01f1c6e3974f1b8991987a05e7220446_date_range",
                 "query": {
                   "datasetName": "5051fcf9",
                   "parameters": [
@@ -1492,50 +1491,53 @@
             ],
             "spec": {
               "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "기간 (결제일)",
+                  "fields": []
+                }
+              },
               "widgetType": "filter-date-range-picker",
               "encodings": {
                 "fields": [
                   {
                     "parameterName": "date_range",
-                    "queryName": "param_91e13a26_date_range"
+                    "queryName": "parameter_dashboards/01f1c6e0259d1974a6e5d38b699b0b23/datasets/01f1c6e3974f1b76bab84cb53afcdeac_date_range"
                   },
                   {
                     "parameterName": "date_range",
-                    "queryName": "param_d0d0f6ee_date_range"
+                    "queryName": "parameter_dashboards/01f1c6e0259d1974a6e5d38b699b0b23/datasets/01f1c6e3974f1b82a7b69ea4a173f060_date_range"
                   },
                   {
                     "parameterName": "date_range",
-                    "queryName": "param_8e9950b9_date_range"
+                    "queryName": "parameter_dashboards/01f1c6e0259d1974a6e5d38b699b0b23/datasets/01f1c6e3974f1b83ae9a75faf602c82c_date_range"
                   },
                   {
                     "parameterName": "date_range",
-                    "queryName": "param_09c4f941_date_range"
+                    "queryName": "parameter_dashboards/01f1c6e0259d1974a6e5d38b699b0b23/datasets/01f1c6e3974f1b84bc5f03cbacf0ba85_date_range"
                   },
                   {
                     "parameterName": "date_range",
-                    "queryName": "param_0b74fe8b_date_range"
+                    "queryName": "parameter_dashboards/01f1c6e0259d1974a6e5d38b699b0b23/datasets/01f1c6e3974f1b85921c5b0515275d76_date_range"
                   },
                   {
                     "parameterName": "date_range",
-                    "queryName": "param_b830c738_date_range"
+                    "queryName": "parameter_dashboards/01f1c6e0259d1974a6e5d38b699b0b23/datasets/01f1c6e3974f1b869f31ee9366486a0b_date_range"
                   },
                   {
                     "parameterName": "date_range",
-                    "queryName": "param_9c3bd453_date_range"
+                    "queryName": "parameter_dashboards/01f1c6e0259d1974a6e5d38b699b0b23/datasets/01f1c6e3974f1b87a519c1d4aa1dee80_date_range"
                   },
                   {
                     "parameterName": "date_range",
-                    "queryName": "param_d63bd997_date_range"
+                    "queryName": "parameter_dashboards/01f1c6e0259d1974a6e5d38b699b0b23/datasets/01f1c6e3974f1b889ae5be70b61ccabe_date_range"
                   },
                   {
                     "parameterName": "date_range",
-                    "queryName": "param_2929edbd_date_range"
+                    "queryName": "parameter_dashboards/01f1c6e0259d1974a6e5d38b699b0b23/datasets/01f1c6e3974f1b8991987a05e7220446_date_range"
                   }
                 ]
-              },
-              "frame": {
-                "showTitle": true,
-                "title": "기간 (결제일)"
               }
             }
           },
@@ -1742,7 +1744,8 @@
             "height": 2
           }
         }
-      ]
+      ],
+      "pageType": "PAGE_TYPE_GLOBAL_FILTERS"
     }
   ]
 }
