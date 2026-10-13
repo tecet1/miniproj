@@ -39,6 +39,10 @@ class TestCompare(unittest.TestCase):
         del broken[("B", "INVALID_TYPE")]
         self.assertEqual(1, len(silver_check.compare_reasons(broken)))
 
+    def test_compare_equal(self):
+        self.assertEqual([], silver_check.compare_equal({"a": (3, 3), "b": (1, 1)}))
+        self.assertEqual(["b: 기대 3, 실제 2"], silver_check.compare_equal({"a": (3, 3), "b": (2, 3)}))
+
     def test_compare_zero(self):
         self.assertEqual([], silver_check.compare_zero("PK 중복", {"orders": 0, "payments": 0}))
         self.assertEqual(["PK 중복 payments: 2건"], silver_check.compare_zero("PK 중복", {"orders": 0, "payments": 2}))
