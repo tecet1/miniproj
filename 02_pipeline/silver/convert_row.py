@@ -24,12 +24,28 @@ def event_to_json(event: dict) -> str:
     힌트: event["event_time"].isoformat(timespec="milliseconds")는 "...+00:00"으로 끝나므로 "Z"로 바꾼다.
     원본 event는 바꾸지 말고 복사본(dict(event))을 고친다.
     """
-    raise NotImplementedError("TODO: event_time을 문자열로 바꿔 json.dumps")
-
+    event_copy = dict(event)
+    event_copy["event_time"] = event_copy["event_time"].isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    return json.dumps(event_copy, ensure_ascii=False)
 
 def convert_row(channel, payload, known_skus) -> dict:
     """위 [순서]대로 처리해 성공 또는 실패 결과를 돌려준다.
 
     힌트: try 안에서 to_common_event -> validate_known_skus, except ConversionError as error 에서 error.reason_code 사용.
     """
-    raise NotImplementedError("TODO: 성공/실패 결과 dict 만들기")
+    try:
+        event = to_common_event(channel, payload)
+        validate_known_skus(event, known_skus)
+        return {
+            "event_id": event["event_id"],
+            "event_type": event["event_type"],
+            "event_json": event_to_json(event),
+            "reason_code": None,
+        }
+    except ConversionError as error:
+        return {
+            "event_id": None,
+            "event_type": None,
+            "event_json": None,
+            "reason_code": error.reason_code,
+        }
