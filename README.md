@@ -24,7 +24,7 @@
 |---|---|
 | `01_contracts/` | 이벤트 명세, 시나리오·상품 기준 데이터, 고정 입력(fixtures)과 독립 기대값, 이벤트 생성기 |
 | `02_pipeline/` | `ingestion`(수신·전송), `bronze`, `silver`, `gold`, `tests` |
-| `03_serving/` | 대시보드 단계. 지금은 벤치마크 참고 자료(`reference/`)만 있다. |
+| `03_serving/` | Metric View(`metric_views/`)와 대시보드(`dashboards/`), 벤치마크 참고 자료(`reference/`) |
 | `04_experiments/` | 핵심 기능 완료 후의 부하·확장성·AI 비교 실험 |
 | `plans/` | 단계별 계획과 완료 조건 |
 | `.github/workflows/` | Function 배포 |
@@ -36,8 +36,8 @@
 | 계획 01. 생성기, 수신·전송 | 완료. 채널당 24건, 합계 72건을 Event Hubs에서 확인했다 (2026-10-12). 잘못된 채널의 400 응답과 5xx 재시도는 로컬 단위 테스트로만 확인했다. |
 | 계획 02. Bronze 적재 | 완료. Databricks 서버리스에서 72행과 `(channel, payload)` 일치를 확인하고 재실행해도 행 수가 유지됨을 확인했다 (2026-10-12). |
 | 계획 03. Silver 변환 | 완료. 로컬 테스트와 Databricks 실행(서버리스)으로 `expected.json` 건수 일치를 확인했다 (2026-10-13). |
-| 계획 04. Gold | 구현·로컬 테스트 완료 (2026-10-13, 전체 337건 중 Gold 73건). Databricks에서 테이블 건수 일치까지 확인(사용자 보고), `check_gold`와 재실행 확인. |
-| Metric View, 대시보드 | 미착수 |
+| 계획 04. Gold | 구현·로컬 테스트 완료 (2026-10-13, 전체 337건 중 Gold 73건). Databricks에서 테이블 건수 일치까지 확인(사용자 보고), `check_gold`와 재실행은 미확인. |
+| 계획 05. Metric View, 대시보드 | 구현·로컬 테스트 완료 (2026-10-13, 전체 373건 중 Serving 36건). Databricks 실행·화면 확인은 **미검증**. |
 
 범위 밖: 스키마 버전 처리, 상품 SCD Type 2, Backfill·Data Factory, Key Vault, 실행 모니터링, Linear 연동, Genie(대시보드 이후), 정량 성능 목표, 채널 간 고객 통합.
 
