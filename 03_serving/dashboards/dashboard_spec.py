@@ -4,10 +4,28 @@
   쿼리는 Metric View를 MEASURE()로 조회한다: SELECT 기준열, MEASURE(지표) AS 지표 FROM 뷰 GROUP BY ALL ORDER BY ...
   share_of를 주면 "그 열 / 전체 합" 열(<열>_share)을 더한다 (사유별 비중). 구성비는 비가산이라 지표가 아니라 조회 단계에서 계산한다.
 [위젯] kind = counter(KPI 숫자 하나) | bar(막대) | table(표). 위치(x, y, width, height)는 6칸 격자 기준이다.
-[페이지] 판매(sales_*) / 환불(refund_*). 필터는 두지 않았다 (PoC: 하루치 데이터).
+[페이지] 판매(sales_*) / 환불(refund_*)
+[필터] 기간(결제일)과 채널을 모든 페이지 맨 위(전역 필터)에 둔다. 필터는 데이터셋 쿼리의 매개변수(:date_range, :channels)다.
+  결과 열에 필터 기준을 넣어 화면에서 거르는 방식은 쓰지 않는다: 이미 집계된 행을 다시 더하면 결제고객수·객단가·비율이 틀린다.
+  매개변수는 Metric View 조회의 WHERE에 들어가므로 선택한 범위에서 지표가 다시 계산된다. 환불 지표의 기간도 원결제일 기준이다 (event_spec 6.3).
 """
 
 SERVING = "commerce_poc.serving"
+GOLD = "commerce_poc.gold"
+
+# 채널 필터의 선택지와 기본값. 값은 dim_channel.channel_name과 같아야 한다 (테스트가 대조한다).
+CHANNEL_NAMES = ["자사몰", "종합 오픈마켓", "스포츠 전문몰"]
+DEFAULT_DATE_RANGE = ("now-1y/d", "now/d")   # Lakeview 상대 날짜 표현: 1년 전 ~ 오늘
+
+# 필터: param = 매개변수 이름, dimension = Metric View 분석 기준. 선택지 데이터셋(options)은 채널 필터만 쓴다.
+FILTERS = [
+    {"param": "date_range", "kind": "date_range", "title": "기간 (결제일)", "dimension": "payment_date"},
+    {"param": "channels", "kind": "multi_select", "title": "채널", "dimension": "channel_name", "options": "channel_options"},
+]
+OPTION_DATASETS = [
+    {"name": "channel_options", "query": f"SELECT channel_name FROM {GOLD}.dim_channel ORDER BY channel_name",
+     "columns": ["channel_name"]},
+]
 
 # 열 이름 -> 화면에 보일 이름
 LABELS = {
@@ -90,10 +108,15 @@ def wrap_query(dataset: dict, inner_sql: str) -> str:
     return sql
 
 
+def where_clause() -> str:
+    """필터를 거는 WHERE 조건 (매개변수 표기). 모든 데이터셋이 같은 조건을 쓴다."""
+    return "payment_date BETWEEN :date_range.min AND :date_range.max AND channel_name IN (:channels)"
+
+
 def dataset_query(dataset: dict, serving: str = SERVING) -> str:
-    """Databricks에서 실행할 데이터셋 쿼리 (Metric View를 MEASURE()로 조회)."""
+    """Databricks에서 실행할 데이터셋 쿼리 (Metric View를 MEASURE()로 조회하고 필터를 WHERE로 건다)."""
     columns = [*dataset["dims"], *(f"MEASURE({m}) AS {m}" for m in dataset["measures"])]
-    inner = f"SELECT {', '.join(columns)} FROM {serving}.{dataset['view']}"
+    inner = f"SELECT {', '.join(columns)} FROM {serving}.{dataset['view']} WHERE {where_clause()}"
     if dataset["dims"]:
         inner += " GROUP BY ALL"
     return wrap_query(dataset, inner)

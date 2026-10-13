@@ -4,63 +4,439 @@
       "name": "2287e411",
       "displayName": "sales_kpi",
       "queryLines": [
-        "SELECT MEASURE(total_sales) AS total_sales, MEASURE(refund_amount) AS refund_amount, MEASURE(net_sales) AS net_sales, MEASURE(refund_ratio) AS refund_ratio, MEASURE(item_count) AS item_count, MEASURE(unit_price_per_item) AS unit_price_per_item, MEASURE(paying_customers) AS paying_customers, MEASURE(average_order_value) AS average_order_value FROM commerce_poc.serving.sales_metrics"
+        "SELECT MEASURE(total_sales) AS total_sales, MEASURE(refund_amount) AS refund_amount, MEASURE(net_sales) AS net_sales, MEASURE(refund_ratio) AS refund_ratio, MEASURE(item_count) AS item_count, MEASURE(unit_price_per_item) AS unit_price_per_item, MEASURE(paying_customers) AS paying_customers, MEASURE(average_order_value) AS average_order_value FROM commerce_poc.serving.sales_metrics WHERE payment_date BETWEEN :date_range.min AND :date_range.max AND channel_name IN (:channels)"
+      ],
+      "parameters": [
+        {
+          "displayName": "date_range",
+          "keyword": "date_range",
+          "dataType": "DATE",
+          "complexType": "RANGE",
+          "defaultSelection": {
+            "range": {
+              "dataType": "DATE",
+              "min": {
+                "value": "now-1y/d"
+              },
+              "max": {
+                "value": "now/d"
+              }
+            }
+          }
+        },
+        {
+          "displayName": "channels",
+          "keyword": "channels",
+          "dataType": "STRING",
+          "complexType": "MULTI",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "자사몰"
+                },
+                {
+                  "value": "종합 오픈마켓"
+                },
+                {
+                  "value": "스포츠 전문몰"
+                }
+              ]
+            }
+          }
+        }
       ]
     },
     {
       "name": "08ddd66c",
       "displayName": "sales_by_date",
       "queryLines": [
-        "SELECT payment_date, MEASURE(total_sales) AS total_sales, MEASURE(refund_amount) AS refund_amount, MEASURE(net_sales) AS net_sales FROM commerce_poc.serving.sales_metrics GROUP BY ALL ORDER BY payment_date"
+        "SELECT payment_date, MEASURE(total_sales) AS total_sales, MEASURE(refund_amount) AS refund_amount, MEASURE(net_sales) AS net_sales FROM commerce_poc.serving.sales_metrics WHERE payment_date BETWEEN :date_range.min AND :date_range.max AND channel_name IN (:channels) GROUP BY ALL ORDER BY payment_date"
+      ],
+      "parameters": [
+        {
+          "displayName": "date_range",
+          "keyword": "date_range",
+          "dataType": "DATE",
+          "complexType": "RANGE",
+          "defaultSelection": {
+            "range": {
+              "dataType": "DATE",
+              "min": {
+                "value": "now-1y/d"
+              },
+              "max": {
+                "value": "now/d"
+              }
+            }
+          }
+        },
+        {
+          "displayName": "channels",
+          "keyword": "channels",
+          "dataType": "STRING",
+          "complexType": "MULTI",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "자사몰"
+                },
+                {
+                  "value": "종합 오픈마켓"
+                },
+                {
+                  "value": "스포츠 전문몰"
+                }
+              ]
+            }
+          }
+        }
       ]
     },
     {
       "name": "50ae0c69",
       "displayName": "sales_by_channel",
       "queryLines": [
-        "SELECT channel_name, MEASURE(total_sales) AS total_sales, MEASURE(refund_amount) AS refund_amount, MEASURE(net_sales) AS net_sales, MEASURE(refund_ratio) AS refund_ratio, MEASURE(item_count) AS item_count, MEASURE(unit_price_per_item) AS unit_price_per_item, MEASURE(paying_customers) AS paying_customers, MEASURE(average_order_value) AS average_order_value FROM commerce_poc.serving.sales_metrics GROUP BY ALL ORDER BY channel_name"
+        "SELECT channel_name, MEASURE(total_sales) AS total_sales, MEASURE(refund_amount) AS refund_amount, MEASURE(net_sales) AS net_sales, MEASURE(refund_ratio) AS refund_ratio, MEASURE(item_count) AS item_count, MEASURE(unit_price_per_item) AS unit_price_per_item, MEASURE(paying_customers) AS paying_customers, MEASURE(average_order_value) AS average_order_value FROM commerce_poc.serving.sales_metrics WHERE payment_date BETWEEN :date_range.min AND :date_range.max AND channel_name IN (:channels) GROUP BY ALL ORDER BY channel_name"
+      ],
+      "parameters": [
+        {
+          "displayName": "date_range",
+          "keyword": "date_range",
+          "dataType": "DATE",
+          "complexType": "RANGE",
+          "defaultSelection": {
+            "range": {
+              "dataType": "DATE",
+              "min": {
+                "value": "now-1y/d"
+              },
+              "max": {
+                "value": "now/d"
+              }
+            }
+          }
+        },
+        {
+          "displayName": "channels",
+          "keyword": "channels",
+          "dataType": "STRING",
+          "complexType": "MULTI",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "자사몰"
+                },
+                {
+                  "value": "종합 오픈마켓"
+                },
+                {
+                  "value": "스포츠 전문몰"
+                }
+              ]
+            }
+          }
+        }
       ]
     },
     {
       "name": "82ba6cf0",
       "displayName": "sales_by_method",
       "queryLines": [
-        "SELECT method_name, MEASURE(total_sales) AS total_sales, MEASURE(item_count) AS item_count FROM commerce_poc.serving.sales_metrics GROUP BY ALL ORDER BY method_name"
+        "SELECT method_name, MEASURE(total_sales) AS total_sales, MEASURE(item_count) AS item_count FROM commerce_poc.serving.sales_metrics WHERE payment_date BETWEEN :date_range.min AND :date_range.max AND channel_name IN (:channels) GROUP BY ALL ORDER BY method_name"
+      ],
+      "parameters": [
+        {
+          "displayName": "date_range",
+          "keyword": "date_range",
+          "dataType": "DATE",
+          "complexType": "RANGE",
+          "defaultSelection": {
+            "range": {
+              "dataType": "DATE",
+              "min": {
+                "value": "now-1y/d"
+              },
+              "max": {
+                "value": "now/d"
+              }
+            }
+          }
+        },
+        {
+          "displayName": "channels",
+          "keyword": "channels",
+          "dataType": "STRING",
+          "complexType": "MULTI",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "자사몰"
+                },
+                {
+                  "value": "종합 오픈마켓"
+                },
+                {
+                  "value": "스포츠 전문몰"
+                }
+              ]
+            }
+          }
+        }
       ]
     },
     {
       "name": "73337f11",
       "displayName": "sales_by_category",
       "queryLines": [
-        "SELECT category, MEASURE(total_sales) AS total_sales, MEASURE(refund_amount) AS refund_amount, MEASURE(net_sales) AS net_sales FROM commerce_poc.serving.sales_metrics GROUP BY ALL ORDER BY category"
+        "SELECT category, MEASURE(total_sales) AS total_sales, MEASURE(refund_amount) AS refund_amount, MEASURE(net_sales) AS net_sales FROM commerce_poc.serving.sales_metrics WHERE payment_date BETWEEN :date_range.min AND :date_range.max AND channel_name IN (:channels) GROUP BY ALL ORDER BY category"
+      ],
+      "parameters": [
+        {
+          "displayName": "date_range",
+          "keyword": "date_range",
+          "dataType": "DATE",
+          "complexType": "RANGE",
+          "defaultSelection": {
+            "range": {
+              "dataType": "DATE",
+              "min": {
+                "value": "now-1y/d"
+              },
+              "max": {
+                "value": "now/d"
+              }
+            }
+          }
+        },
+        {
+          "displayName": "channels",
+          "keyword": "channels",
+          "dataType": "STRING",
+          "complexType": "MULTI",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "자사몰"
+                },
+                {
+                  "value": "종합 오픈마켓"
+                },
+                {
+                  "value": "스포츠 전문몰"
+                }
+              ]
+            }
+          }
+        }
       ]
     },
     {
       "name": "68e4e686",
       "displayName": "refund_kpi",
       "queryLines": [
-        "SELECT MEASURE(refund_amount) AS refund_amount, MEASURE(refund_quantity) AS refund_quantity FROM commerce_poc.serving.refund_metrics"
+        "SELECT MEASURE(refund_amount) AS refund_amount, MEASURE(refund_quantity) AS refund_quantity FROM commerce_poc.serving.refund_metrics WHERE payment_date BETWEEN :date_range.min AND :date_range.max AND channel_name IN (:channels)"
+      ],
+      "parameters": [
+        {
+          "displayName": "date_range",
+          "keyword": "date_range",
+          "dataType": "DATE",
+          "complexType": "RANGE",
+          "defaultSelection": {
+            "range": {
+              "dataType": "DATE",
+              "min": {
+                "value": "now-1y/d"
+              },
+              "max": {
+                "value": "now/d"
+              }
+            }
+          }
+        },
+        {
+          "displayName": "channels",
+          "keyword": "channels",
+          "dataType": "STRING",
+          "complexType": "MULTI",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "자사몰"
+                },
+                {
+                  "value": "종합 오픈마켓"
+                },
+                {
+                  "value": "스포츠 전문몰"
+                }
+              ]
+            }
+          }
+        }
       ]
     },
     {
       "name": "e67f8ebe",
       "displayName": "refund_by_date",
       "queryLines": [
-        "SELECT payment_date, MEASURE(refund_amount) AS refund_amount, MEASURE(refund_quantity) AS refund_quantity FROM commerce_poc.serving.refund_metrics GROUP BY ALL ORDER BY payment_date"
+        "SELECT payment_date, MEASURE(refund_amount) AS refund_amount, MEASURE(refund_quantity) AS refund_quantity FROM commerce_poc.serving.refund_metrics WHERE payment_date BETWEEN :date_range.min AND :date_range.max AND channel_name IN (:channels) GROUP BY ALL ORDER BY payment_date"
+      ],
+      "parameters": [
+        {
+          "displayName": "date_range",
+          "keyword": "date_range",
+          "dataType": "DATE",
+          "complexType": "RANGE",
+          "defaultSelection": {
+            "range": {
+              "dataType": "DATE",
+              "min": {
+                "value": "now-1y/d"
+              },
+              "max": {
+                "value": "now/d"
+              }
+            }
+          }
+        },
+        {
+          "displayName": "channels",
+          "keyword": "channels",
+          "dataType": "STRING",
+          "complexType": "MULTI",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "자사몰"
+                },
+                {
+                  "value": "종합 오픈마켓"
+                },
+                {
+                  "value": "스포츠 전문몰"
+                }
+              ]
+            }
+          }
+        }
       ]
     },
     {
       "name": "62566ebc",
       "displayName": "refund_by_reason",
       "queryLines": [
-        "SELECT *, CAST(refund_amount AS DOUBLE) / SUM(refund_amount) OVER () AS refund_amount_share FROM (SELECT refund_reason, MEASURE(refund_amount) AS refund_amount, MEASURE(refund_quantity) AS refund_quantity FROM commerce_poc.serving.refund_metrics GROUP BY ALL) AS base ORDER BY refund_reason"
+        "SELECT *, CAST(refund_amount AS DOUBLE) / SUM(refund_amount) OVER () AS refund_amount_share FROM (SELECT refund_reason, MEASURE(refund_amount) AS refund_amount, MEASURE(refund_quantity) AS refund_quantity FROM commerce_poc.serving.refund_metrics WHERE payment_date BETWEEN :date_range.min AND :date_range.max AND channel_name IN (:channels) GROUP BY ALL) AS base ORDER BY refund_reason"
+      ],
+      "parameters": [
+        {
+          "displayName": "date_range",
+          "keyword": "date_range",
+          "dataType": "DATE",
+          "complexType": "RANGE",
+          "defaultSelection": {
+            "range": {
+              "dataType": "DATE",
+              "min": {
+                "value": "now-1y/d"
+              },
+              "max": {
+                "value": "now/d"
+              }
+            }
+          }
+        },
+        {
+          "displayName": "channels",
+          "keyword": "channels",
+          "dataType": "STRING",
+          "complexType": "MULTI",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "자사몰"
+                },
+                {
+                  "value": "종합 오픈마켓"
+                },
+                {
+                  "value": "스포츠 전문몰"
+                }
+              ]
+            }
+          }
+        }
       ]
     },
     {
       "name": "5051fcf9",
       "displayName": "refund_by_channel",
       "queryLines": [
-        "SELECT channel_name, MEASURE(refund_amount) AS refund_amount, MEASURE(refund_quantity) AS refund_quantity FROM commerce_poc.serving.refund_metrics GROUP BY ALL ORDER BY channel_name"
+        "SELECT channel_name, MEASURE(refund_amount) AS refund_amount, MEASURE(refund_quantity) AS refund_quantity FROM commerce_poc.serving.refund_metrics WHERE payment_date BETWEEN :date_range.min AND :date_range.max AND channel_name IN (:channels) GROUP BY ALL ORDER BY channel_name"
+      ],
+      "parameters": [
+        {
+          "displayName": "date_range",
+          "keyword": "date_range",
+          "dataType": "DATE",
+          "complexType": "RANGE",
+          "defaultSelection": {
+            "range": {
+              "dataType": "DATE",
+              "min": {
+                "value": "now-1y/d"
+              },
+              "max": {
+                "value": "now/d"
+              }
+            }
+          }
+        },
+        {
+          "displayName": "channels",
+          "keyword": "channels",
+          "dataType": "STRING",
+          "complexType": "MULTI",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "자사몰"
+                },
+                {
+                  "value": "종합 오픈마켓"
+                },
+                {
+                  "value": "스포츠 전문몰"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "14350056",
+      "displayName": "channel_options",
+      "queryLines": [
+        "SELECT channel_name FROM commerce_poc.gold.dim_channel ORDER BY channel_name"
       ]
     }
   ],
@@ -983,6 +1359,387 @@
             "y": 8,
             "width": 3,
             "height": 5
+          }
+        }
+      ]
+    },
+    {
+      "name": "7a779051",
+      "displayName": "필터",
+      "pageType": "PAGE_TYPE_GLOBAL_FILTERS",
+      "layout": [
+        {
+          "widget": {
+            "name": "15139bdf",
+            "queries": [
+              {
+                "name": "param_91e13a26_date_range",
+                "query": {
+                  "datasetName": "2287e411",
+                  "parameters": [
+                    {
+                      "name": "date_range",
+                      "keyword": "date_range"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "param_d0d0f6ee_date_range",
+                "query": {
+                  "datasetName": "08ddd66c",
+                  "parameters": [
+                    {
+                      "name": "date_range",
+                      "keyword": "date_range"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "param_8e9950b9_date_range",
+                "query": {
+                  "datasetName": "50ae0c69",
+                  "parameters": [
+                    {
+                      "name": "date_range",
+                      "keyword": "date_range"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "param_09c4f941_date_range",
+                "query": {
+                  "datasetName": "82ba6cf0",
+                  "parameters": [
+                    {
+                      "name": "date_range",
+                      "keyword": "date_range"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "param_0b74fe8b_date_range",
+                "query": {
+                  "datasetName": "73337f11",
+                  "parameters": [
+                    {
+                      "name": "date_range",
+                      "keyword": "date_range"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "param_b830c738_date_range",
+                "query": {
+                  "datasetName": "68e4e686",
+                  "parameters": [
+                    {
+                      "name": "date_range",
+                      "keyword": "date_range"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "param_9c3bd453_date_range",
+                "query": {
+                  "datasetName": "e67f8ebe",
+                  "parameters": [
+                    {
+                      "name": "date_range",
+                      "keyword": "date_range"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "param_d63bd997_date_range",
+                "query": {
+                  "datasetName": "62566ebc",
+                  "parameters": [
+                    {
+                      "name": "date_range",
+                      "keyword": "date_range"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "param_2929edbd_date_range",
+                "query": {
+                  "datasetName": "5051fcf9",
+                  "parameters": [
+                    {
+                      "name": "date_range",
+                      "keyword": "date_range"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-date-range-picker",
+              "encodings": {
+                "fields": [
+                  {
+                    "parameterName": "date_range",
+                    "queryName": "param_91e13a26_date_range"
+                  },
+                  {
+                    "parameterName": "date_range",
+                    "queryName": "param_d0d0f6ee_date_range"
+                  },
+                  {
+                    "parameterName": "date_range",
+                    "queryName": "param_8e9950b9_date_range"
+                  },
+                  {
+                    "parameterName": "date_range",
+                    "queryName": "param_09c4f941_date_range"
+                  },
+                  {
+                    "parameterName": "date_range",
+                    "queryName": "param_0b74fe8b_date_range"
+                  },
+                  {
+                    "parameterName": "date_range",
+                    "queryName": "param_b830c738_date_range"
+                  },
+                  {
+                    "parameterName": "date_range",
+                    "queryName": "param_9c3bd453_date_range"
+                  },
+                  {
+                    "parameterName": "date_range",
+                    "queryName": "param_d63bd997_date_range"
+                  },
+                  {
+                    "parameterName": "date_range",
+                    "queryName": "param_2929edbd_date_range"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "기간 (결제일)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "40119584",
+            "queries": [
+              {
+                "name": "options_channel_options",
+                "query": {
+                  "datasetName": "14350056",
+                  "fields": [
+                    {
+                      "name": "channel_name",
+                      "expression": "`channel_name`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "param_91e13a26_channels",
+                "query": {
+                  "datasetName": "2287e411",
+                  "parameters": [
+                    {
+                      "name": "channels",
+                      "keyword": "channels"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "param_d0d0f6ee_channels",
+                "query": {
+                  "datasetName": "08ddd66c",
+                  "parameters": [
+                    {
+                      "name": "channels",
+                      "keyword": "channels"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "param_8e9950b9_channels",
+                "query": {
+                  "datasetName": "50ae0c69",
+                  "parameters": [
+                    {
+                      "name": "channels",
+                      "keyword": "channels"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "param_09c4f941_channels",
+                "query": {
+                  "datasetName": "82ba6cf0",
+                  "parameters": [
+                    {
+                      "name": "channels",
+                      "keyword": "channels"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "param_0b74fe8b_channels",
+                "query": {
+                  "datasetName": "73337f11",
+                  "parameters": [
+                    {
+                      "name": "channels",
+                      "keyword": "channels"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "param_b830c738_channels",
+                "query": {
+                  "datasetName": "68e4e686",
+                  "parameters": [
+                    {
+                      "name": "channels",
+                      "keyword": "channels"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "param_9c3bd453_channels",
+                "query": {
+                  "datasetName": "e67f8ebe",
+                  "parameters": [
+                    {
+                      "name": "channels",
+                      "keyword": "channels"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "param_d63bd997_channels",
+                "query": {
+                  "datasetName": "62566ebc",
+                  "parameters": [
+                    {
+                      "name": "channels",
+                      "keyword": "channels"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "param_2929edbd_channels",
+                "query": {
+                  "datasetName": "5051fcf9",
+                  "parameters": [
+                    {
+                      "name": "channels",
+                      "keyword": "channels"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "channel_name",
+                    "displayName": "채널",
+                    "queryName": "options_channel_options"
+                  },
+                  {
+                    "parameterName": "channels",
+                    "queryName": "param_91e13a26_channels"
+                  },
+                  {
+                    "parameterName": "channels",
+                    "queryName": "param_d0d0f6ee_channels"
+                  },
+                  {
+                    "parameterName": "channels",
+                    "queryName": "param_8e9950b9_channels"
+                  },
+                  {
+                    "parameterName": "channels",
+                    "queryName": "param_09c4f941_channels"
+                  },
+                  {
+                    "parameterName": "channels",
+                    "queryName": "param_0b74fe8b_channels"
+                  },
+                  {
+                    "parameterName": "channels",
+                    "queryName": "param_b830c738_channels"
+                  },
+                  {
+                    "parameterName": "channels",
+                    "queryName": "param_9c3bd453_channels"
+                  },
+                  {
+                    "parameterName": "channels",
+                    "queryName": "param_d63bd997_channels"
+                  },
+                  {
+                    "parameterName": "channels",
+                    "queryName": "param_2929edbd_channels"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "채널"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 0,
+            "width": 3,
+            "height": 2
           }
         }
       ]

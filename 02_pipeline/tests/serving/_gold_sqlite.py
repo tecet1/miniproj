@@ -45,12 +45,14 @@ def gold_connection(rows: dict):
     return con
 
 
-def plain_sql(definition: dict, dims: list, measures: list) -> str:
-    """정의의 조인과 식으로 만든 일반 SQL. dims가 비어 있으면 전체를 한 행으로 집계한다."""
+def plain_sql(definition: dict, dims: list, measures: list, where: str = "") -> str:
+    """정의의 조인과 식으로 만든 일반 SQL. dims가 비어 있으면 전체를 한 행으로 집계한다. where는 이미 식으로 풀린 조건이다."""
     dim_expr, measure_expr = dict(definition["dimensions"]), dict(definition["measures"])
     joins = " ".join(f"LEFT JOIN gold.{table} AS {table} ON {condition}" for table, condition in definition["joins"])
     columns = [f"{dim_expr[d]} AS {d}" for d in dims] + [f"{measure_expr[m]} AS {m}" for m in measures]
     sql = f"SELECT {', '.join(columns)} FROM gold.{definition['source']} AS source {joins}"
+    if where:
+        sql += f" WHERE {where}"
     if dims:
         sql += " GROUP BY " + ", ".join(dim_expr[d] for d in dims)
     return sql

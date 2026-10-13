@@ -21,7 +21,7 @@
 - 이벤트는 주문 생성·주문 취소·결제 성공·결제 실패·환불 성공 5종이다.
 - 지표는 결제일 귀속(원거래 기준)이다. 지표 정의는 `01_contracts/contracts/event_spec.md` 6.5절을 따른다.
 - 인증은 Managed Identity를 사용한다. 코드 배포는 GitHub Actions를 사용한다.
-- 지금 단계: Metric View → 대시보드 (구현·로컬 테스트 완료, Databricks 확인 대기). 이후: Genie. (이벤트 명세·생성기·Bronze·Silver·Gold는 완료)
+- 지금 단계: Metric View → 대시보드 (구현·로컬 테스트 완료, Databricks 실행·대시보드 출력은 사용자 보고로 확인). 이후: Genie(요청 시). (이벤트 명세·생성기·Bronze·Silver·Gold는 완료)
 - **범위 밖(요청 전에 구현하지 않는다):** 스키마 버전 처리, 상품 SCD Type 2, Backfill·Data Factory, Key Vault, 실행 모니터링, Linear 연동, Genie(대시보드 이후), 정량 성능 목표, 채널 간 고객 통합.
 - `04_experiments`는 핵심 기능 완료 후에 다룬다.
 

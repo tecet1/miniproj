@@ -3,14 +3,14 @@
   build_dashboard()   정의 -> 대시보드 dict (datasets, pages)
   write_dashboard()   dict -> 파일. 기본 위치는 이 폴더의 commerce_poc.lvdash.json
 실행: python 03_serving/dashboards/build_dashboard.py  (파일을 다시 만든다)
-Databricks에서 이 파일을 Git folder로 동기화하면 대시보드로 열린다. JSON 모양(위젯 spec 버전 등)을 Databricks가 받아들이는지는
-확인하지 않았다 (미검증). 쿼리와 열 이름의 일치, 위젯 위치 겹침 여부는 로컬 테스트로 확인한다.
+Databricks에서 이 파일을 Git folder로 동기화하면 대시보드로 열린다. 위젯 모양은 Databricks에서 열려 확인했지만(사용자 보고), 전역 필터(매개변수 묶음)는 아직 열어 보지 않았다 (미검증). 쿼리와 열 이름의 일치, 위젯 위치 겹침 여부는 로컬 테스트로 확인한다.
 """
 import hashlib
 import json
 from pathlib import Path
 
-from dashboard_spec import DATASETS, LABELS, PAGES, dataset_columns, dataset_query
+from dashboard_spec import (CHANNEL_NAMES, DATASETS, DEFAULT_DATE_RANGE, FILTERS, LABELS, OPTION_DATASETS, PAGES,
+                            dataset_columns, dataset_query)
 
 DEFAULT_PATH = Path(__file__).resolve().parent / "commerce_poc.lvdash.json"
 SPEC_VERSION = {"counter": 2, "table": 2, "bar": 3}   # 위젯 종류별 spec 버전
@@ -25,9 +25,54 @@ def label(column: str) -> str:
     return LABELS.get(column, column)
 
 
+def dataset_id(name: str) -> str:
+    return short_id(f"dataset-{name}")
+
+
+def parameters() -> list:
+    """데이터셋 매개변수 정의: 기간(날짜 범위)과 채널(다중 선택). 기본값은 1년 전~오늘, 채널 전체."""
+    low, high = DEFAULT_DATE_RANGE
+    return [
+        {"displayName": "date_range", "keyword": "date_range", "dataType": "DATE", "complexType": "RANGE",
+         "defaultSelection": {"range": {"dataType": "DATE", "min": {"value": low}, "max": {"value": high}}}},
+        {"displayName": "channels", "keyword": "channels", "dataType": "STRING", "complexType": "MULTI",
+         "defaultSelection": {"values": {"dataType": "STRING", "values": [{"value": n} for n in CHANNEL_NAMES]}}},
+    ]
+
+
 def dataset_json(dataset: dict) -> dict:
-    return {"name": short_id(f"dataset-{dataset['name']}"), "displayName": dataset["name"],
-            "queryLines": [dataset_query(dataset)]}
+    return {"name": dataset_id(dataset["name"]), "displayName": dataset["name"],
+            "queryLines": [dataset_query(dataset)], "parameters": parameters()}
+
+
+def option_dataset_json(option: dict) -> dict:
+    return {"name": dataset_id(option["name"]), "displayName": option["name"], "queryLines": [option["query"]]}
+
+
+def filter_widget(index: int, flt: dict) -> dict:
+    """전역 필터 위젯 하나. 모든 지표 데이터셋의 같은 매개변수에 묶는다."""
+    param = flt["param"]
+    queries = [{"name": f"param_{short_id(d['name'])}_{param}",
+                "query": {"datasetName": dataset_id(d["name"]), "parameters": [{"name": param, "keyword": param}],
+                          "disaggregated": False}} for d in DATASETS]
+    fields = [{"parameterName": param, "queryName": q["name"]} for q in queries]
+    if flt.get("options"):
+        options = f"options_{flt['options']}"
+        column = flt["dimension"]
+        queries.insert(0, {"name": options, "query": {"datasetName": dataset_id(flt["options"]), "fields": [field(column)],
+                                                       "disaggregated": False}})
+        fields.insert(0, {"fieldName": column, "displayName": label(column), "queryName": options})
+    kind = {"date_range": "filter-date-range-picker", "multi_select": "filter-multi-select"}[flt["kind"]]
+    return {"widget": {"name": short_id(f"filter-{param}"), "queries": queries,
+                       "spec": {"version": 2, "widgetType": kind, "encodings": {"fields": fields},
+                                "frame": {"showTitle": True, "title": flt["title"]}}},
+            "position": {"x": 3 * index, "y": 0, "width": 3, "height": 2}}
+
+
+def filter_page() -> dict:
+    """모든 페이지 맨 위에 보이는 전역 필터 페이지."""
+    return {"name": short_id("page-filters"), "displayName": "필터", "pageType": "PAGE_TYPE_GLOBAL_FILTERS",
+            "layout": [filter_widget(i, f) for i, f in enumerate(FILTERS)]}
 
 
 def field(name: str, aggregate: str = "") -> dict:
@@ -68,7 +113,7 @@ def layout_item(page: str, index: int, widget: dict) -> dict:
         "widget": {
             "name": short_id(f"widget-{page}-{index}"),
             "queries": [{"name": "main_query",
-                         "query": {"datasetName": short_id(f"dataset-{widget['dataset']}"), "fields": fields,
+                         "query": {"datasetName": dataset_id(widget["dataset"]), "fields": fields,
                                    "disaggregated": disaggregated}}],
             "spec": spec,
         },
@@ -77,10 +122,11 @@ def layout_item(page: str, index: int, widget: dict) -> dict:
 
 
 def build_dashboard() -> dict:
-    """사용하는 데이터셋만 담은 대시보드 dict."""
+    """지표 데이터셋, 필터 선택지 데이터셋, 판매·환불 페이지, 전역 필터 페이지를 담은 대시보드 dict."""
     pages = [{"name": short_id(f"page-{page['name']}"), "displayName": page["title"], "pageType": "PAGE_TYPE_CANVAS",
               "layout": [layout_item(page["name"], i, w) for i, w in enumerate(page["widgets"])]} for page in PAGES]
-    return {"datasets": [dataset_json(d) for d in DATASETS], "pages": pages}
+    datasets = [dataset_json(d) for d in DATASETS] + [option_dataset_json(o) for o in OPTION_DATASETS]
+    return {"datasets": datasets, "pages": [*pages, filter_page()]}
 
 
 def write_dashboard(path=DEFAULT_PATH) -> Path:
