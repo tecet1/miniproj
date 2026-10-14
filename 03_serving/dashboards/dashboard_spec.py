@@ -5,11 +5,11 @@
   결제고객수·객단가·비율이 틀리므로 쓰지 않는다. 환불 지표의 기간도 원결제일 기준이다 (event_spec 6.3).
 [비교 기간] 쿼리 안에서 조회 기간으로 계산한다 (Databricks 매개변수는 다른 매개변수로 만들 수 없다).
   이전 기간 = 바로 앞의 같은 길이 구간, 전년 동기 = 1년 전 같은 구간. KPI 증감은 기간마다 Metric View를 다시 조회해 비교한다.
-[데이터셋] 세 가지다.
+[데이터셋] 두 가지다.
   일반   이름, Metric View, 분석 기준(dims), 지표(measures), 정렬(order), 구성비 열(share_of). 쿼리는 MEASURE()로 조회한다.
-  KPI    "kpi": {지표: 뷰}. 한 행에 현재값 `지표`와 증감 문장 `지표_prev`(이전 기간 대비), `지표_yoy`(전년 대비)를 낸다.
-         비교 기간에 상품결제건수가 0이면 증감 대신 "실적이 없습니다."다. 상품결제건수는 sales_metrics에서 읽는다.
-  비교   compare_period: 이전 기간·전년 동기를 "시작 ~ 끝" 문장으로 보여 주는 읽기 전용 값.
+  KPI    "kpi": {지표: 표시 방식}. 한 행에 현재값 `지표`, 화면용 문장 `지표_text`("12,345원"), 증감 문장 `지표_delta`를 낸다.
+         큰 카드: "▲ 12.3% 직전 기간 대비 · 전년 동기: ▲ 5.0%" (환불금액비율은 %p, 전년 동기 줄 없음), 작은 카드: "▲ 12.3%".
+         비교 기간에 상품결제건수가 0이면 "실적이 없습니다."다. 상품결제건수는 sales_metrics에서 읽는다.
 [위젯] kind = counter(숫자·문장 하나) | bar(막대, horizontal이면 가로) | line(선) | table(표). 위치는 6칸 격자 기준이다.
 [로컬 검증] 쿼리가 쓰는 date_sub·datediff·add_months·weekday·date_format·format_number는 Spark 함수다. 로컬 테스트는 같은 이름의
   함수를 sqlite에 등록해 같은 문장을 실행한다 (등록한 함수의 동작이 Spark와 같은지는 Databricks에서만 확인된다).
@@ -45,17 +45,29 @@ LABELS = {
     "total_sales": "총판매금액", "refund_amount": "환불금액", "net_sales": "순판매금액", "refund_ratio": "환불금액비율",
     "item_count": "상품결제건수", "unit_price_per_item": "상품결제단가", "paying_customers": "결제고객수",
     "average_order_value": "객단가", "refund_quantity": "환불수량", "refund_amount_share": "환불금액 비중",
-    "net_sales_share": "순판매금액 비중", "payment_week": "결제주(월요일)", "channel_name": "채널",
+    "net_sales_share": "순판매금액 비중", "total_sales_share": "총판매금액 비중", "payment_week": "결제주(월요일)", "channel_name": "채널",
     "method_name": "결제수단", "category": "카테고리", "refund_reason": "환불 사유", "refund_type": "환불 유형",
-    "prev_period": "이전 기간", "yoy_period": "전년 동기",
 }
 
-SALES_KPI = {m: "sales_metrics" for m in ("total_sales", "net_sales", "refund_ratio", "paying_customers",
-                                         "average_order_value", "item_count", "unit_price_per_item", "refund_amount")}
-REFUND_KPI = {"refund_amount": "refund_metrics", "refund_quantity": "refund_metrics", "refund_ratio": "sales_metrics"}
+def _kpi(view, unit, yoy=False, points=False, short=False) -> dict:
+    """KPI 하나의 표시 방식. unit = 숫자 뒤 단위(%면 비율을 퍼센트로), yoy = 전년 동기 줄을 둔다, points = 증감을 %p(비율의 차)로,
+    short = 작은 카드(증감 숫자만)."""
+    return {"view": view, "unit": unit, "yoy": yoy, "points": points, "short": short}
+
+
+SALES_KPI = {
+    "total_sales": _kpi("sales_metrics", "원", yoy=True), "net_sales": _kpi("sales_metrics", "원", yoy=True),
+    "refund_ratio": _kpi("sales_metrics", "%", points=True),
+    "paying_customers": _kpi("sales_metrics", "명", short=True),
+    "average_order_value": _kpi("sales_metrics", "원", short=True),
+    "item_count": _kpi("sales_metrics", "건", short=True), "unit_price_per_item": _kpi("sales_metrics", "원", short=True),
+    "refund_amount": _kpi("sales_metrics", "원", short=True),
+}
+REFUND_KPI = {"refund_amount": _kpi("refund_metrics", "원", yoy=True),
+              "refund_quantity": _kpi("refund_metrics", "개", yoy=True),
+              "refund_ratio": _kpi("sales_metrics", "%", points=True)}
 
 DATASETS = [
-    {"name": "compare_period", "compare": True},
     {"name": "sales_kpi", "kpi": SALES_KPI},
     {"name": "refund_kpi", "kpi": REFUND_KPI},
     {"name": "sales_trend_by_channel_week", "view": "sales_metrics", "dims": ["payment_week", "channel_name"],
@@ -65,9 +77,9 @@ DATASETS = [
     {"name": "channel_net_share", "view": "sales_metrics", "dims": ["channel_name"], "measures": ["net_sales"],
      "share_of": "net_sales", "order": "net_sales DESC, channel_name"},
     {"name": "sales_by_method", "view": "sales_metrics", "dims": ["method_name"], "measures": ["total_sales"],
-     "order": "total_sales DESC, method_name"},
+     "share_of": "total_sales", "order": "total_sales DESC, method_name"},
     {"name": "sales_by_category", "view": "sales_metrics", "dims": ["category"], "measures": ["total_sales"],
-     "order": "total_sales DESC, category"},
+     "share_of": "total_sales", "order": "total_sales DESC, category"},
     {"name": "refund_ratio_by_channel", "view": "sales_metrics", "dims": ["channel_name"], "measures": ["refund_ratio"],
      "order": "refund_ratio DESC, channel_name"},
     {"name": "sales_by_channel", "view": "sales_metrics", "dims": ["channel_name"],
@@ -80,81 +92,76 @@ DATASETS = [
      "order": "refund_amount DESC, refund_reason"},
 ]
 
-
-def _kpi_group(dataset: dict, title_measure: str, **place) -> list:
-    """큰 카드: 값 + 이전 기간 대비 + 전년 동기 대비. place = x, y."""
-    x, y = place["x"], place["y"]
-    note = " (낮을수록 좋은 지표입니다)" if title_measure == "refund_ratio" else ""
-    return [
-        {"dataset": dataset, "kind": "counter", "title": f"{LABELS[title_measure]}{note}", "value": title_measure,
-         "x": x, "y": y, "width": 2, "height": 3},
-        {"dataset": dataset, "kind": "counter", "title": f"{LABELS[title_measure]} · 이전 기간 대비",
-         "value": f"{title_measure}_prev", "x": x, "y": y + 3, "width": 1, "height": 2},
-        {"dataset": dataset, "kind": "counter", "title": f"{LABELS[title_measure]} · 전년 동기 대비",
-         "value": f"{title_measure}_yoy", "x": x + 1, "y": y + 3, "width": 1, "height": 2},
-    ]
+# 와이어프레임의 문구 (카드 아래 작은 글씨)
+NOTE_COMPARE = "비교 기간(자동): 직전 같은 길이 · 전년 동기"
+NOTE_REFUND_BASIS = "환불은 원결제일 기준으로 귀속합니다"
+NOTE_LOWER_BETTER = "낮을수록 좋은 지표입니다."
 
 
-def _small_card(dataset: str, measure: str, x: int, y: int, width: int = 1) -> list:
-    """작은 카드: 값 + 이전 기간 대비 (전년 동기는 큰 카드에만 보여 준다)."""
-    return [{"dataset": dataset, "kind": "counter", "title": LABELS[measure], "value": measure,
-             "x": x, "y": y, "width": width, "height": 2},
-            {"dataset": dataset, "kind": "counter", "title": f"{LABELS[measure]} · 이전 기간 대비",
-             "value": f"{measure}_prev", "x": x, "y": y + 2, "width": width, "height": 2}]
+def _kpi_card(dataset: str, measure: str, x: int, y: int, width: int, value_height: int, note: str = "") -> list:
+    """KPI 카드 하나 = 값 위젯(`지표_text`, 제목 있음) + 바로 아래 증감 위젯(`지표_delta`, 제목 없음). 와이어프레임의 한 카드처럼 붙여 놓는다."""
+    return [{"dataset": dataset, "kind": "counter", "title": LABELS[measure], "value": f"{measure}_text", "note": note,
+             "x": x, "y": y, "width": width, "height": value_height},
+            {"dataset": dataset, "kind": "counter", "title": "", "value": f"{measure}_delta",
+             "x": x, "y": y + value_height, "width": width, "height": 1 if value_height <= 2 else 2}]
 
 
-def _compare_row() -> list:
-    return [{"dataset": "compare_period", "kind": "counter", "title": "비교 기간 · 이전 기간", "value": "prev_period",
-             "x": 0, "y": 0, "width": 3, "height": 2},
-            {"dataset": "compare_period", "kind": "counter", "title": "비교 기간 · 전년 동기", "value": "yoy_period",
-             "x": 3, "y": 0, "width": 3, "height": 2}]
+def _kpi_row(dataset: str, measures: list, y: int) -> list:
+    """작은 카드 5개 한 줄 (폭 1,1,1,1,2)."""
+    widths = [1, 1, 1, 1, 2]
+    xs = [sum(widths[:i]) for i in range(len(widths))]
+    return [w for m, x, wd in zip(measures, xs, widths) for w in _kpi_card(dataset, m, x, y, wd, 2)]
+
+
+def _kpi_trio(dataset: str, measures: list, y: int, first_note: str) -> list:
+    """큰 카드 3개: 첫 카드(가장 큼)는 왼쪽 절반, 나머지 둘은 오른쪽 절반에 위아래로 쌓는다 (와이어프레임의 2:1:1 비율을 6칸 격자에 맞춘 것)."""
+    first, second, third = measures
+    return [*_kpi_card(dataset, first, 0, y, 3, 4, first_note),
+            *_kpi_card(dataset, second, 3, y, 3, 2),
+            *_kpi_card(dataset, third, 3, y + 3, 3, 2, NOTE_LOWER_BETTER)]
 
 
 # 위젯: dataset, kind, title, 보여줄 열(counter는 value 하나, bar·line은 x_field와 y_fields, table은 columns), 위치.
-# 선택 항목: color_field(계열 열, 채널이면 고정 색), horizontal(가로 막대).
+# 선택 항목: note(제목 아래 작은 설명), color_field(계열 열, 채널이면 고정 색), horizontal(가로 막대).
 PAGES = [
     {"name": "sales", "title": "판매", "widgets": [
-        *_compare_row(),
-        *_kpi_group("sales_kpi", "total_sales", x=0, y=2),
-        *_kpi_group("sales_kpi", "net_sales", x=2, y=2),
-        *_kpi_group("sales_kpi", "refund_ratio", x=4, y=2),
-        *_small_card("sales_kpi", "paying_customers", 0, 7),
-        *_small_card("sales_kpi", "average_order_value", 1, 7),
-        *_small_card("sales_kpi", "item_count", 2, 7),
-        *_small_card("sales_kpi", "unit_price_per_item", 3, 7),
-        *_small_card("sales_kpi", "refund_amount", 4, 7, width=2),
-        {"dataset": "sales_trend_by_channel_week", "kind": "line",
-         "title": "채널별 총판매금액 추이 (주별, 첫·마지막 주는 조회 기간 경계로 부분 주일 수 있음)",
+        *_kpi_trio("sales_kpi", ["total_sales", "net_sales", "refund_ratio"], 0, NOTE_COMPARE),
+        *_kpi_row("sales_kpi", ["paying_customers", "average_order_value", "item_count", "unit_price_per_item",
+                                "refund_amount"], 6),
+        {"dataset": "sales_trend_by_channel_week", "kind": "line", "title": "채널별 총판매금액 추이 (주별)",
+         "note": "첫 주와 마지막 주는 부분 기간일 수 있어 표시합니다.",
          "x_field": "payment_week", "y_fields": ["total_sales"], "color_field": "channel_name",
-         "x": 0, "y": 11, "width": 6, "height": 6},
-        {"dataset": "channel_net_share", "kind": "bar", "title": "채널별 순판매금액 비중", "x_field": "channel_name",
-         "y_fields": ["net_sales"], "horizontal": True, "x": 0, "y": 17, "width": 3, "height": 6},
-        {"dataset": "refund_ratio_by_week", "kind": "line",
-         "title": "환불금액비율 추이 (주별, 첫·마지막 주는 부분 주일 수 있음)", "x_field": "payment_week",
-         "y_fields": ["refund_ratio"], "x": 3, "y": 17, "width": 3, "height": 6},
-        {"dataset": "sales_by_method", "kind": "bar", "title": "결제수단별 총판매금액", "x_field": "method_name",
-         "y_fields": ["total_sales"], "horizontal": True, "x": 0, "y": 23, "width": 3, "height": 6},
-        {"dataset": "sales_by_category", "kind": "bar", "title": "카테고리별 총판매금액", "x_field": "category",
-         "y_fields": ["total_sales"], "horizontal": True, "x": 3, "y": 23, "width": 3, "height": 6},
-        {"dataset": "sales_by_channel", "kind": "table", "title": "채널별 지표",
-         "columns": ["channel_name", "total_sales", "net_sales", "refund_ratio", "paying_customers", "average_order_value"],
-         "x": 0, "y": 29, "width": 6, "height": 4},
+         "x": 0, "y": 9, "width": 6, "height": 6},
+        {"dataset": "channel_net_share", "kind": "bar", "title": "채널별 순판매금액 비중 (큰 순)", "x_field": "channel_name",
+         "y_fields": ["net_sales_share"], "horizontal": True, "color_field": "channel_name",
+         "x": 0, "y": 15, "width": 3, "height": 6},
+        {"dataset": "refund_ratio_by_week", "kind": "line", "title": "환불금액비율 추이 (주별, 채널 합계)",
+         "note": "주별 값은 그 주의 분자·분모로 다시 계산한 값입니다.", "x_field": "payment_week",
+         "y_fields": ["refund_ratio"], "x": 3, "y": 15, "width": 3, "height": 6},
+        {"dataset": "sales_by_method", "kind": "bar", "title": "결제수단별 총판매금액 (큰 순)", "x_field": "method_name",
+         "y_fields": ["total_sales_share"], "horizontal": True, "x": 0, "y": 21, "width": 3, "height": 6},
+        {"dataset": "sales_by_category", "kind": "bar", "title": "카테고리별 총판매금액 (큰 순)", "x_field": "category",
+         "y_fields": ["total_sales_share"], "horizontal": True, "x": 3, "y": 21, "width": 3, "height": 6},
+        {"dataset": "sales_by_channel", "kind": "table", "title": "채널별 지표 (상세)",
+         "columns": ["channel_name", "total_sales", "net_sales", "refund_ratio", "paying_customers",
+                     "average_order_value"],
+         "x": 0, "y": 27, "width": 6, "height": 4},
     ]},
     {"name": "refund", "title": "환불", "widgets": [
-        *_compare_row(),
-        *_kpi_group("refund_kpi", "refund_amount", x=0, y=2),
-        *_kpi_group("refund_kpi", "refund_quantity", x=2, y=2),
-        *_kpi_group("refund_kpi", "refund_ratio", x=4, y=2),
-        {"dataset": "refund_by_reason", "kind": "bar", "title": "사유별 환불금액", "x_field": "refund_reason",
-         "y_fields": ["refund_amount"], "horizontal": True, "x": 0, "y": 7, "width": 3, "height": 6},
-        {"dataset": "refund_ratio_by_channel", "kind": "bar", "title": "채널별 환불금액비율", "x_field": "channel_name",
-         "y_fields": ["refund_ratio"], "horizontal": True, "x": 3, "y": 7, "width": 3, "height": 6},
-        {"dataset": "refund_trend_by_week", "kind": "line",
-         "title": "결제일별 환불금액 추이 (원결제일 귀속, 주별, 최근 주는 환불 접수 중이라 낮을 수 있음)",
-         "x_field": "payment_week", "y_fields": ["refund_amount"], "x": 0, "y": 13, "width": 6, "height": 6},
-        {"dataset": "refund_by_reason", "kind": "table", "title": "사유별 환불 상세",
+        *_kpi_trio("refund_kpi", ["refund_amount", "refund_quantity", "refund_ratio"], 0, NOTE_REFUND_BASIS),
+        {"dataset": "refund_by_reason", "kind": "bar", "title": "사유별 환불금액 (큰 순 · 비중)", "x_field": "refund_reason",
+         "note": "금액·수량 상세는 아래 표에서 봅니다.", "y_fields": ["refund_amount_share"], "horizontal": True,
+         "x": 0, "y": 6, "width": 3, "height": 6},
+        {"dataset": "refund_ratio_by_channel", "kind": "bar", "title": "채널별 환불금액비율 (큰 순)",
+         "x_field": "channel_name", "note": "금액이 아니라 비율로 비교해야 채널 규모 차이가 가려지지 않습니다.",
+         "y_fields": ["refund_ratio"], "horizontal": True, "color_field": "channel_name",
+         "x": 3, "y": 6, "width": 3, "height": 6},
+        {"dataset": "refund_trend_by_week", "kind": "line", "title": "결제일별 환불금액 추이 (원결제일 귀속 · 주별)",
+         "note": "최근 주는 아직 환불이 접수 중일 수 있어 값이 낮게 보일 수 있습니다.", "x_field": "payment_week",
+         "y_fields": ["refund_amount"], "x": 0, "y": 12, "width": 6, "height": 6},
+        {"dataset": "refund_by_reason", "kind": "table", "title": "사유별 환불 (상세)",
          "columns": ["refund_reason", "refund_amount", "refund_quantity", "refund_amount_share"],
-         "x": 0, "y": 19, "width": 6, "height": 5},
+         "x": 0, "y": 18, "width": 6, "height": 5},
     ]},
 ]
 
@@ -170,11 +177,9 @@ PERIODS = {
 
 def dataset_columns(dataset: dict) -> list:
     """데이터셋 쿼리가 돌려주는 열 이름 순서."""
-    if dataset.get("compare"):
-        return ["prev_period", "yoy_period"]
     if dataset.get("kpi"):
         measures = list(dataset["kpi"])
-        return [*measures, *(f"{m}_{suffix}" for m in measures for suffix in ("prev", "yoy"))]
+        return [*measures, *(f"{m}_text" for m in measures), *(f"{m}_delta" for m in measures)]
     share = [f"{dataset['share_of']}_share"] if dataset.get("share_of") else []
     return [*dataset["dims"], *dataset["measures"], *share]
 
@@ -197,43 +202,60 @@ def wrap_query(dataset: dict, inner_sql: str) -> str:
     return sql
 
 
-def delta_text(current: str, compare: str, compare_items: str) -> str:
-    """증감 문장. 비교 기간에 결제 건수가 없으면 "실적이 없습니다.", 비교값이 없거나 0이면 "-", 아니면 "▲ 12.3%" 같은 방향 기호와 숫자.
+def delta_text(current: str, compare: str, compare_items: str, points: bool = False, prefix: str = "",
+               suffix: str = "", empty_prefix: str = "") -> str:
+    """증감 문장 한 조각. 비교 기간에 결제 건수가 없으면 "실적이 없습니다.", 비교할 수 없으면 "-", 아니면 "▲ 12.3%" 같은 방향 기호와 숫자.
+    points면 비율의 차를 %p로 보여 준다(환불금액비율). prefix·suffix는 숫자 문장 앞뒤 글, empty_prefix는 실적 없음·"-" 앞 글이다.
     상태 색(좋음/나쁨)은 쓰지 않는다. 정수끼리 나누는 오차를 피하려 100.0을 먼저 곱한다."""
-    return (f"CASE WHEN {compare_items} IS NULL OR {compare_items} = 0 THEN '실적이 없습니다.' "
-            f"WHEN {current} IS NULL OR {compare} IS NULL OR {compare} = 0 THEN '-' "
-            f"ELSE (CASE WHEN {current} > {compare} THEN '▲ ' WHEN {current} < {compare} THEN '▼ ' ELSE '' END) "
-            f"|| format_number(ABS({current} - {compare}) * 100.0 / ABS({compare}), 1) || '%' END")
+    arrow = f"(CASE WHEN {current} > {compare} THEN '▲ ' WHEN {current} < {compare} THEN '▼ ' ELSE '' END)"
+    if points:
+        body = f"format_number(ABS({current} - {compare}) * 100.0, 1) || '%p'"
+        unusable = f"{current} IS NULL OR {compare} IS NULL"
+    else:
+        body = f"format_number(ABS({current} - {compare}) * 100.0 / ABS({compare}), 1) || '%'"
+        unusable = f"{current} IS NULL OR {compare} IS NULL OR {compare} = 0"
+    return (f"CASE WHEN {compare_items} IS NULL OR {compare_items} = 0 THEN '{empty_prefix}실적이 없습니다.' "
+            f"WHEN {unusable} THEN '{empty_prefix}-' "
+            f"ELSE '{prefix}' || {arrow} || {body} || '{suffix}' END")
+
+
+def value_text(column: str, unit: str) -> str:
+    """값을 화면 문장으로: 천 단위 쉼표 + 단위. 비율(%)은 퍼센트로 소수 한 자리. 값이 없으면 "-"."""
+    if unit == "%":
+        return f"COALESCE(format_number({column} * 100.0, 1) || '%', '-')"
+    return f"COALESCE(format_number({column}, 0) || '{unit}', '-')"
 
 
 def kpi_query(dataset: dict, select) -> str:
-    """KPI 쿼리: 기간(현재·이전·전년)과 뷰마다 지표를 조회하는 CTE를 만들고, 한 행으로 합쳐 증감 문장을 붙인다.
+    """KPI 쿼리: 기간(현재·이전·전년)과 뷰마다 지표를 조회하는 CTE를 만들고, 한 행으로 합쳐 값 문장과 증감 문장을 붙인다.
 
     select(view, measures, where)는 지표 조회 문장을 돌려주는 함수다. Databricks는 MEASURE() 조회를, 로컬 테스트는 같은 정의의 일반 SQL을 넘긴다.
     상품결제건수(sales_metrics)는 비교 기간의 실적 유무 판단에 항상 함께 조회한다."""
     groups = {}
-    for measure, view in dataset["kpi"].items():
-        groups.setdefault(view, []).append(measure)
+    for measure, shape in dataset["kpi"].items():
+        groups.setdefault(shape["view"], []).append(measure)
     sales = groups.setdefault("sales_metrics", [])
     if "item_count" not in sales:
         sales.append("item_count")
-    source = {m: v for v, ms in groups.items() for m in ms}   # 지표 -> 뷰
     ctes = [f"{p}_{view} AS ({select(view, ms, where_clause(p))})" for p in PERIODS for view, ms in groups.items()]
-    columns = [f"cur_{source[m]}.{m} AS {m}" for m in dataset["kpi"]]
-    for m in dataset["kpi"]:
-        for period, suffix in (("prev", "prev"), ("yoy", "yoy")):
-            columns.append(delta_text(f"cur_{source[m]}.{m}", f"{period}_{source[m]}.{m}",
-                                      f"{period}_sales_metrics.item_count") + f" AS {m}_{suffix}")
+    values, texts, deltas = [], [], []
+    for m, shape in dataset["kpi"].items():
+        cur = f"cur_{shape['view']}.{m}"
+        values.append(f"{cur} AS {m}")
+        texts.append(f"{value_text(cur, shape['unit'])} AS {m}_text")
+
+        def part(period, **kw):
+            return delta_text(cur, f"{period}_{shape['view']}.{m}", f"{period}_sales_metrics.item_count",
+                              points=shape["points"], **kw)
+        if shape["short"]:
+            expr = part("prev")
+        else:
+            expr = part("prev", suffix=" 직전 기간 대비", empty_prefix="직전 기간: ")
+            if shape["yoy"]:
+                expr = f"{expr} || ' · ' || " + part("yoy", prefix="전년 동기: ", empty_prefix="전년 동기: ")
+        deltas.append(f"{expr} AS {m}_delta")
     tables = " CROSS JOIN ".join(f"{p}_{view}" for p in PERIODS for view in groups)
-    return f"WITH {', '.join(ctes)} SELECT {', '.join(columns)} FROM {tables}"
-
-
-def compare_query() -> str:
-    """이전 기간·전년 동기를 "시작 ~ 끝" 문장으로 돌려준다 (KPI와 같은 PERIODS 식)."""
-    def text(period):
-        low, high = PERIODS[period]
-        return (f"date_format({low}, 'yyyy-MM-dd') || ' ~ ' || date_format({high}, 'yyyy-MM-dd')")
-    return f"SELECT {text('prev')} AS prev_period, {text('yoy')} AS yoy_period"
+    return f"WITH {', '.join(ctes)} SELECT {', '.join([*values, *texts, *deltas])} FROM {tables}"
 
 
 def spark_select(serving: str = SERVING):
@@ -247,8 +269,6 @@ def spark_select(serving: str = SERVING):
 
 def dataset_query(dataset: dict, serving: str = SERVING) -> str:
     """Databricks에서 실행할 데이터셋 쿼리."""
-    if dataset.get("compare"):
-        return compare_query()
     select = spark_select(serving)
     if dataset.get("kpi"):
         return kpi_query(dataset, select)

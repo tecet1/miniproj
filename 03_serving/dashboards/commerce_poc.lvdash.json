@@ -1,36 +1,10 @@
 {
   "datasets": [
     {
-      "name": "c582e3c4",
-      "displayName": "compare_period",
-      "queryLines": [
-        "SELECT date_format(date_sub(:date_range.min, datediff(:date_range.max, :date_range.min) + 1), 'yyyy-MM-dd') || ' ~ ' || date_format(date_sub(:date_range.min, 1), 'yyyy-MM-dd') AS prev_period, date_format(add_months(:date_range.min, -12), 'yyyy-MM-dd') || ' ~ ' || date_format(add_months(:date_range.max, -12), 'yyyy-MM-dd') AS yoy_period"
-      ],
-      "parameters": [
-        {
-          "displayName": "date_range",
-          "keyword": "date_range",
-          "dataType": "DATE",
-          "complexType": "RANGE",
-          "defaultSelection": {
-            "range": {
-              "dataType": "DATE",
-              "min": {
-                "value": "now-30d/d"
-              },
-              "max": {
-                "value": "now/d"
-              }
-            }
-          }
-        }
-      ]
-    },
-    {
       "name": "2287e411",
       "displayName": "sales_kpi",
       "queryLines": [
-        "WITH cur_sales_metrics AS (SELECT MEASURE(total_sales) AS total_sales, MEASURE(net_sales) AS net_sales, MEASURE(refund_ratio) AS refund_ratio, MEASURE(paying_customers) AS paying_customers, MEASURE(average_order_value) AS average_order_value, MEASURE(item_count) AS item_count, MEASURE(unit_price_per_item) AS unit_price_per_item, MEASURE(refund_amount) AS refund_amount FROM commerce_poc.serving.sales_metrics WHERE payment_date BETWEEN :date_range.min AND :date_range.max AND channel_name IN (:channels) AND category IN (:categories)), prev_sales_metrics AS (SELECT MEASURE(total_sales) AS total_sales, MEASURE(net_sales) AS net_sales, MEASURE(refund_ratio) AS refund_ratio, MEASURE(paying_customers) AS paying_customers, MEASURE(average_order_value) AS average_order_value, MEASURE(item_count) AS item_count, MEASURE(unit_price_per_item) AS unit_price_per_item, MEASURE(refund_amount) AS refund_amount FROM commerce_poc.serving.sales_metrics WHERE payment_date BETWEEN date_sub(:date_range.min, datediff(:date_range.max, :date_range.min) + 1) AND date_sub(:date_range.min, 1) AND channel_name IN (:channels) AND category IN (:categories)), yoy_sales_metrics AS (SELECT MEASURE(total_sales) AS total_sales, MEASURE(net_sales) AS net_sales, MEASURE(refund_ratio) AS refund_ratio, MEASURE(paying_customers) AS paying_customers, MEASURE(average_order_value) AS average_order_value, MEASURE(item_count) AS item_count, MEASURE(unit_price_per_item) AS unit_price_per_item, MEASURE(refund_amount) AS refund_amount FROM commerce_poc.serving.sales_metrics WHERE payment_date BETWEEN add_months(:date_range.min, -12) AND add_months(:date_range.max, -12) AND channel_name IN (:channels) AND category IN (:categories)) SELECT cur_sales_metrics.total_sales AS total_sales, cur_sales_metrics.net_sales AS net_sales, cur_sales_metrics.refund_ratio AS refund_ratio, cur_sales_metrics.paying_customers AS paying_customers, cur_sales_metrics.average_order_value AS average_order_value, cur_sales_metrics.item_count AS item_count, cur_sales_metrics.unit_price_per_item AS unit_price_per_item, cur_sales_metrics.refund_amount AS refund_amount, CASE WHEN prev_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_sales_metrics.total_sales IS NULL OR prev_sales_metrics.total_sales IS NULL OR prev_sales_metrics.total_sales = 0 THEN '-' ELSE (CASE WHEN cur_sales_metrics.total_sales > prev_sales_metrics.total_sales THEN '▲ ' WHEN cur_sales_metrics.total_sales < prev_sales_metrics.total_sales THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.total_sales - prev_sales_metrics.total_sales) * 100.0 / ABS(prev_sales_metrics.total_sales), 1) || '%' END AS total_sales_prev, CASE WHEN yoy_sales_metrics.item_count IS NULL OR yoy_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_sales_metrics.total_sales IS NULL OR yoy_sales_metrics.total_sales IS NULL OR yoy_sales_metrics.total_sales = 0 THEN '-' ELSE (CASE WHEN cur_sales_metrics.total_sales > yoy_sales_metrics.total_sales THEN '▲ ' WHEN cur_sales_metrics.total_sales < yoy_sales_metrics.total_sales THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.total_sales - yoy_sales_metrics.total_sales) * 100.0 / ABS(yoy_sales_metrics.total_sales), 1) || '%' END AS total_sales_yoy, CASE WHEN prev_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_sales_metrics.net_sales IS NULL OR prev_sales_metrics.net_sales IS NULL OR prev_sales_metrics.net_sales = 0 THEN '-' ELSE (CASE WHEN cur_sales_metrics.net_sales > prev_sales_metrics.net_sales THEN '▲ ' WHEN cur_sales_metrics.net_sales < prev_sales_metrics.net_sales THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.net_sales - prev_sales_metrics.net_sales) * 100.0 / ABS(prev_sales_metrics.net_sales), 1) || '%' END AS net_sales_prev, CASE WHEN yoy_sales_metrics.item_count IS NULL OR yoy_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_sales_metrics.net_sales IS NULL OR yoy_sales_metrics.net_sales IS NULL OR yoy_sales_metrics.net_sales = 0 THEN '-' ELSE (CASE WHEN cur_sales_metrics.net_sales > yoy_sales_metrics.net_sales THEN '▲ ' WHEN cur_sales_metrics.net_sales < yoy_sales_metrics.net_sales THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.net_sales - yoy_sales_metrics.net_sales) * 100.0 / ABS(yoy_sales_metrics.net_sales), 1) || '%' END AS net_sales_yoy, CASE WHEN prev_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_sales_metrics.refund_ratio IS NULL OR prev_sales_metrics.refund_ratio IS NULL OR prev_sales_metrics.refund_ratio = 0 THEN '-' ELSE (CASE WHEN cur_sales_metrics.refund_ratio > prev_sales_metrics.refund_ratio THEN '▲ ' WHEN cur_sales_metrics.refund_ratio < prev_sales_metrics.refund_ratio THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.refund_ratio - prev_sales_metrics.refund_ratio) * 100.0 / ABS(prev_sales_metrics.refund_ratio), 1) || '%' END AS refund_ratio_prev, CASE WHEN yoy_sales_metrics.item_count IS NULL OR yoy_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_sales_metrics.refund_ratio IS NULL OR yoy_sales_metrics.refund_ratio IS NULL OR yoy_sales_metrics.refund_ratio = 0 THEN '-' ELSE (CASE WHEN cur_sales_metrics.refund_ratio > yoy_sales_metrics.refund_ratio THEN '▲ ' WHEN cur_sales_metrics.refund_ratio < yoy_sales_metrics.refund_ratio THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.refund_ratio - yoy_sales_metrics.refund_ratio) * 100.0 / ABS(yoy_sales_metrics.refund_ratio), 1) || '%' END AS refund_ratio_yoy, CASE WHEN prev_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_sales_metrics.paying_customers IS NULL OR prev_sales_metrics.paying_customers IS NULL OR prev_sales_metrics.paying_customers = 0 THEN '-' ELSE (CASE WHEN cur_sales_metrics.paying_customers > prev_sales_metrics.paying_customers THEN '▲ ' WHEN cur_sales_metrics.paying_customers < prev_sales_metrics.paying_customers THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.paying_customers - prev_sales_metrics.paying_customers) * 100.0 / ABS(prev_sales_metrics.paying_customers), 1) || '%' END AS paying_customers_prev, CASE WHEN yoy_sales_metrics.item_count IS NULL OR yoy_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_sales_metrics.paying_customers IS NULL OR yoy_sales_metrics.paying_customers IS NULL OR yoy_sales_metrics.paying_customers = 0 THEN '-' ELSE (CASE WHEN cur_sales_metrics.paying_customers > yoy_sales_metrics.paying_customers THEN '▲ ' WHEN cur_sales_metrics.paying_customers < yoy_sales_metrics.paying_customers THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.paying_customers - yoy_sales_metrics.paying_customers) * 100.0 / ABS(yoy_sales_metrics.paying_customers), 1) || '%' END AS paying_customers_yoy, CASE WHEN prev_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_sales_metrics.average_order_value IS NULL OR prev_sales_metrics.average_order_value IS NULL OR prev_sales_metrics.average_order_value = 0 THEN '-' ELSE (CASE WHEN cur_sales_metrics.average_order_value > prev_sales_metrics.average_order_value THEN '▲ ' WHEN cur_sales_metrics.average_order_value < prev_sales_metrics.average_order_value THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.average_order_value - prev_sales_metrics.average_order_value) * 100.0 / ABS(prev_sales_metrics.average_order_value), 1) || '%' END AS average_order_value_prev, CASE WHEN yoy_sales_metrics.item_count IS NULL OR yoy_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_sales_metrics.average_order_value IS NULL OR yoy_sales_metrics.average_order_value IS NULL OR yoy_sales_metrics.average_order_value = 0 THEN '-' ELSE (CASE WHEN cur_sales_metrics.average_order_value > yoy_sales_metrics.average_order_value THEN '▲ ' WHEN cur_sales_metrics.average_order_value < yoy_sales_metrics.average_order_value THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.average_order_value - yoy_sales_metrics.average_order_value) * 100.0 / ABS(yoy_sales_metrics.average_order_value), 1) || '%' END AS average_order_value_yoy, CASE WHEN prev_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count = 0 THEN '-' ELSE (CASE WHEN cur_sales_metrics.item_count > prev_sales_metrics.item_count THEN '▲ ' WHEN cur_sales_metrics.item_count < prev_sales_metrics.item_count THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.item_count - prev_sales_metrics.item_count) * 100.0 / ABS(prev_sales_metrics.item_count), 1) || '%' END AS item_count_prev, CASE WHEN yoy_sales_metrics.item_count IS NULL OR yoy_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_sales_metrics.item_count IS NULL OR yoy_sales_metrics.item_count IS NULL OR yoy_sales_metrics.item_count = 0 THEN '-' ELSE (CASE WHEN cur_sales_metrics.item_count > yoy_sales_metrics.item_count THEN '▲ ' WHEN cur_sales_metrics.item_count < yoy_sales_metrics.item_count THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.item_count - yoy_sales_metrics.item_count) * 100.0 / ABS(yoy_sales_metrics.item_count), 1) || '%' END AS item_count_yoy, CASE WHEN prev_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_sales_metrics.unit_price_per_item IS NULL OR prev_sales_metrics.unit_price_per_item IS NULL OR prev_sales_metrics.unit_price_per_item = 0 THEN '-' ELSE (CASE WHEN cur_sales_metrics.unit_price_per_item > prev_sales_metrics.unit_price_per_item THEN '▲ ' WHEN cur_sales_metrics.unit_price_per_item < prev_sales_metrics.unit_price_per_item THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.unit_price_per_item - prev_sales_metrics.unit_price_per_item) * 100.0 / ABS(prev_sales_metrics.unit_price_per_item), 1) || '%' END AS unit_price_per_item_prev, CASE WHEN yoy_sales_metrics.item_count IS NULL OR yoy_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_sales_metrics.unit_price_per_item IS NULL OR yoy_sales_metrics.unit_price_per_item IS NULL OR yoy_sales_metrics.unit_price_per_item = 0 THEN '-' ELSE (CASE WHEN cur_sales_metrics.unit_price_per_item > yoy_sales_metrics.unit_price_per_item THEN '▲ ' WHEN cur_sales_metrics.unit_price_per_item < yoy_sales_metrics.unit_price_per_item THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.unit_price_per_item - yoy_sales_metrics.unit_price_per_item) * 100.0 / ABS(yoy_sales_metrics.unit_price_per_item), 1) || '%' END AS unit_price_per_item_yoy, CASE WHEN prev_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_sales_metrics.refund_amount IS NULL OR prev_sales_metrics.refund_amount IS NULL OR prev_sales_metrics.refund_amount = 0 THEN '-' ELSE (CASE WHEN cur_sales_metrics.refund_amount > prev_sales_metrics.refund_amount THEN '▲ ' WHEN cur_sales_metrics.refund_amount < prev_sales_metrics.refund_amount THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.refund_amount - prev_sales_metrics.refund_amount) * 100.0 / ABS(prev_sales_metrics.refund_amount), 1) || '%' END AS refund_amount_prev, CASE WHEN yoy_sales_metrics.item_count IS NULL OR yoy_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_sales_metrics.refund_amount IS NULL OR yoy_sales_metrics.refund_amount IS NULL OR yoy_sales_metrics.refund_amount = 0 THEN '-' ELSE (CASE WHEN cur_sales_metrics.refund_amount > yoy_sales_metrics.refund_amount THEN '▲ ' WHEN cur_sales_metrics.refund_amount < yoy_sales_metrics.refund_amount THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.refund_amount - yoy_sales_metrics.refund_amount) * 100.0 / ABS(yoy_sales_metrics.refund_amount), 1) || '%' END AS refund_amount_yoy FROM cur_sales_metrics CROSS JOIN prev_sales_metrics CROSS JOIN yoy_sales_metrics"
+        "WITH cur_sales_metrics AS (SELECT MEASURE(total_sales) AS total_sales, MEASURE(net_sales) AS net_sales, MEASURE(refund_ratio) AS refund_ratio, MEASURE(paying_customers) AS paying_customers, MEASURE(average_order_value) AS average_order_value, MEASURE(item_count) AS item_count, MEASURE(unit_price_per_item) AS unit_price_per_item, MEASURE(refund_amount) AS refund_amount FROM commerce_poc.serving.sales_metrics WHERE payment_date BETWEEN :date_range.min AND :date_range.max AND channel_name IN (:channels) AND category IN (:categories)), prev_sales_metrics AS (SELECT MEASURE(total_sales) AS total_sales, MEASURE(net_sales) AS net_sales, MEASURE(refund_ratio) AS refund_ratio, MEASURE(paying_customers) AS paying_customers, MEASURE(average_order_value) AS average_order_value, MEASURE(item_count) AS item_count, MEASURE(unit_price_per_item) AS unit_price_per_item, MEASURE(refund_amount) AS refund_amount FROM commerce_poc.serving.sales_metrics WHERE payment_date BETWEEN date_sub(:date_range.min, datediff(:date_range.max, :date_range.min) + 1) AND date_sub(:date_range.min, 1) AND channel_name IN (:channels) AND category IN (:categories)), yoy_sales_metrics AS (SELECT MEASURE(total_sales) AS total_sales, MEASURE(net_sales) AS net_sales, MEASURE(refund_ratio) AS refund_ratio, MEASURE(paying_customers) AS paying_customers, MEASURE(average_order_value) AS average_order_value, MEASURE(item_count) AS item_count, MEASURE(unit_price_per_item) AS unit_price_per_item, MEASURE(refund_amount) AS refund_amount FROM commerce_poc.serving.sales_metrics WHERE payment_date BETWEEN add_months(:date_range.min, -12) AND add_months(:date_range.max, -12) AND channel_name IN (:channels) AND category IN (:categories)) SELECT cur_sales_metrics.total_sales AS total_sales, cur_sales_metrics.net_sales AS net_sales, cur_sales_metrics.refund_ratio AS refund_ratio, cur_sales_metrics.paying_customers AS paying_customers, cur_sales_metrics.average_order_value AS average_order_value, cur_sales_metrics.item_count AS item_count, cur_sales_metrics.unit_price_per_item AS unit_price_per_item, cur_sales_metrics.refund_amount AS refund_amount, COALESCE(format_number(cur_sales_metrics.total_sales, 0) || '원', '-') AS total_sales_text, COALESCE(format_number(cur_sales_metrics.net_sales, 0) || '원', '-') AS net_sales_text, COALESCE(format_number(cur_sales_metrics.refund_ratio * 100.0, 1) || '%', '-') AS refund_ratio_text, COALESCE(format_number(cur_sales_metrics.paying_customers, 0) || '명', '-') AS paying_customers_text, COALESCE(format_number(cur_sales_metrics.average_order_value, 0) || '원', '-') AS average_order_value_text, COALESCE(format_number(cur_sales_metrics.item_count, 0) || '건', '-') AS item_count_text, COALESCE(format_number(cur_sales_metrics.unit_price_per_item, 0) || '원', '-') AS unit_price_per_item_text, COALESCE(format_number(cur_sales_metrics.refund_amount, 0) || '원', '-') AS refund_amount_text, CASE WHEN prev_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count = 0 THEN '직전 기간: 실적이 없습니다.' WHEN cur_sales_metrics.total_sales IS NULL OR prev_sales_metrics.total_sales IS NULL OR prev_sales_metrics.total_sales = 0 THEN '직전 기간: -' ELSE '' || (CASE WHEN cur_sales_metrics.total_sales > prev_sales_metrics.total_sales THEN '▲ ' WHEN cur_sales_metrics.total_sales < prev_sales_metrics.total_sales THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.total_sales - prev_sales_metrics.total_sales) * 100.0 / ABS(prev_sales_metrics.total_sales), 1) || '%' || ' 직전 기간 대비' END || ' · ' || CASE WHEN yoy_sales_metrics.item_count IS NULL OR yoy_sales_metrics.item_count = 0 THEN '전년 동기: 실적이 없습니다.' WHEN cur_sales_metrics.total_sales IS NULL OR yoy_sales_metrics.total_sales IS NULL OR yoy_sales_metrics.total_sales = 0 THEN '전년 동기: -' ELSE '전년 동기: ' || (CASE WHEN cur_sales_metrics.total_sales > yoy_sales_metrics.total_sales THEN '▲ ' WHEN cur_sales_metrics.total_sales < yoy_sales_metrics.total_sales THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.total_sales - yoy_sales_metrics.total_sales) * 100.0 / ABS(yoy_sales_metrics.total_sales), 1) || '%' || '' END AS total_sales_delta, CASE WHEN prev_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count = 0 THEN '직전 기간: 실적이 없습니다.' WHEN cur_sales_metrics.net_sales IS NULL OR prev_sales_metrics.net_sales IS NULL OR prev_sales_metrics.net_sales = 0 THEN '직전 기간: -' ELSE '' || (CASE WHEN cur_sales_metrics.net_sales > prev_sales_metrics.net_sales THEN '▲ ' WHEN cur_sales_metrics.net_sales < prev_sales_metrics.net_sales THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.net_sales - prev_sales_metrics.net_sales) * 100.0 / ABS(prev_sales_metrics.net_sales), 1) || '%' || ' 직전 기간 대비' END || ' · ' || CASE WHEN yoy_sales_metrics.item_count IS NULL OR yoy_sales_metrics.item_count = 0 THEN '전년 동기: 실적이 없습니다.' WHEN cur_sales_metrics.net_sales IS NULL OR yoy_sales_metrics.net_sales IS NULL OR yoy_sales_metrics.net_sales = 0 THEN '전년 동기: -' ELSE '전년 동기: ' || (CASE WHEN cur_sales_metrics.net_sales > yoy_sales_metrics.net_sales THEN '▲ ' WHEN cur_sales_metrics.net_sales < yoy_sales_metrics.net_sales THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.net_sales - yoy_sales_metrics.net_sales) * 100.0 / ABS(yoy_sales_metrics.net_sales), 1) || '%' || '' END AS net_sales_delta, CASE WHEN prev_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count = 0 THEN '직전 기간: 실적이 없습니다.' WHEN cur_sales_metrics.refund_ratio IS NULL OR prev_sales_metrics.refund_ratio IS NULL THEN '직전 기간: -' ELSE '' || (CASE WHEN cur_sales_metrics.refund_ratio > prev_sales_metrics.refund_ratio THEN '▲ ' WHEN cur_sales_metrics.refund_ratio < prev_sales_metrics.refund_ratio THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.refund_ratio - prev_sales_metrics.refund_ratio) * 100.0, 1) || '%p' || ' 직전 기간 대비' END AS refund_ratio_delta, CASE WHEN prev_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_sales_metrics.paying_customers IS NULL OR prev_sales_metrics.paying_customers IS NULL OR prev_sales_metrics.paying_customers = 0 THEN '-' ELSE '' || (CASE WHEN cur_sales_metrics.paying_customers > prev_sales_metrics.paying_customers THEN '▲ ' WHEN cur_sales_metrics.paying_customers < prev_sales_metrics.paying_customers THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.paying_customers - prev_sales_metrics.paying_customers) * 100.0 / ABS(prev_sales_metrics.paying_customers), 1) || '%' || '' END AS paying_customers_delta, CASE WHEN prev_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_sales_metrics.average_order_value IS NULL OR prev_sales_metrics.average_order_value IS NULL OR prev_sales_metrics.average_order_value = 0 THEN '-' ELSE '' || (CASE WHEN cur_sales_metrics.average_order_value > prev_sales_metrics.average_order_value THEN '▲ ' WHEN cur_sales_metrics.average_order_value < prev_sales_metrics.average_order_value THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.average_order_value - prev_sales_metrics.average_order_value) * 100.0 / ABS(prev_sales_metrics.average_order_value), 1) || '%' || '' END AS average_order_value_delta, CASE WHEN prev_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count = 0 THEN '-' ELSE '' || (CASE WHEN cur_sales_metrics.item_count > prev_sales_metrics.item_count THEN '▲ ' WHEN cur_sales_metrics.item_count < prev_sales_metrics.item_count THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.item_count - prev_sales_metrics.item_count) * 100.0 / ABS(prev_sales_metrics.item_count), 1) || '%' || '' END AS item_count_delta, CASE WHEN prev_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_sales_metrics.unit_price_per_item IS NULL OR prev_sales_metrics.unit_price_per_item IS NULL OR prev_sales_metrics.unit_price_per_item = 0 THEN '-' ELSE '' || (CASE WHEN cur_sales_metrics.unit_price_per_item > prev_sales_metrics.unit_price_per_item THEN '▲ ' WHEN cur_sales_metrics.unit_price_per_item < prev_sales_metrics.unit_price_per_item THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.unit_price_per_item - prev_sales_metrics.unit_price_per_item) * 100.0 / ABS(prev_sales_metrics.unit_price_per_item), 1) || '%' || '' END AS unit_price_per_item_delta, CASE WHEN prev_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_sales_metrics.refund_amount IS NULL OR prev_sales_metrics.refund_amount IS NULL OR prev_sales_metrics.refund_amount = 0 THEN '-' ELSE '' || (CASE WHEN cur_sales_metrics.refund_amount > prev_sales_metrics.refund_amount THEN '▲ ' WHEN cur_sales_metrics.refund_amount < prev_sales_metrics.refund_amount THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.refund_amount - prev_sales_metrics.refund_amount) * 100.0 / ABS(prev_sales_metrics.refund_amount), 1) || '%' || '' END AS refund_amount_delta FROM cur_sales_metrics CROSS JOIN prev_sales_metrics CROSS JOIN yoy_sales_metrics"
       ],
       "parameters": [
         {
@@ -106,7 +80,7 @@
       "name": "68e4e686",
       "displayName": "refund_kpi",
       "queryLines": [
-        "WITH cur_refund_metrics AS (SELECT MEASURE(refund_amount) AS refund_amount, MEASURE(refund_quantity) AS refund_quantity FROM commerce_poc.serving.refund_metrics WHERE payment_date BETWEEN :date_range.min AND :date_range.max AND channel_name IN (:channels) AND category IN (:categories)), cur_sales_metrics AS (SELECT MEASURE(refund_ratio) AS refund_ratio, MEASURE(item_count) AS item_count FROM commerce_poc.serving.sales_metrics WHERE payment_date BETWEEN :date_range.min AND :date_range.max AND channel_name IN (:channels) AND category IN (:categories)), prev_refund_metrics AS (SELECT MEASURE(refund_amount) AS refund_amount, MEASURE(refund_quantity) AS refund_quantity FROM commerce_poc.serving.refund_metrics WHERE payment_date BETWEEN date_sub(:date_range.min, datediff(:date_range.max, :date_range.min) + 1) AND date_sub(:date_range.min, 1) AND channel_name IN (:channels) AND category IN (:categories)), prev_sales_metrics AS (SELECT MEASURE(refund_ratio) AS refund_ratio, MEASURE(item_count) AS item_count FROM commerce_poc.serving.sales_metrics WHERE payment_date BETWEEN date_sub(:date_range.min, datediff(:date_range.max, :date_range.min) + 1) AND date_sub(:date_range.min, 1) AND channel_name IN (:channels) AND category IN (:categories)), yoy_refund_metrics AS (SELECT MEASURE(refund_amount) AS refund_amount, MEASURE(refund_quantity) AS refund_quantity FROM commerce_poc.serving.refund_metrics WHERE payment_date BETWEEN add_months(:date_range.min, -12) AND add_months(:date_range.max, -12) AND channel_name IN (:channels) AND category IN (:categories)), yoy_sales_metrics AS (SELECT MEASURE(refund_ratio) AS refund_ratio, MEASURE(item_count) AS item_count FROM commerce_poc.serving.sales_metrics WHERE payment_date BETWEEN add_months(:date_range.min, -12) AND add_months(:date_range.max, -12) AND channel_name IN (:channels) AND category IN (:categories)) SELECT cur_refund_metrics.refund_amount AS refund_amount, cur_refund_metrics.refund_quantity AS refund_quantity, cur_sales_metrics.refund_ratio AS refund_ratio, CASE WHEN prev_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_refund_metrics.refund_amount IS NULL OR prev_refund_metrics.refund_amount IS NULL OR prev_refund_metrics.refund_amount = 0 THEN '-' ELSE (CASE WHEN cur_refund_metrics.refund_amount > prev_refund_metrics.refund_amount THEN '▲ ' WHEN cur_refund_metrics.refund_amount < prev_refund_metrics.refund_amount THEN '▼ ' ELSE '' END) || format_number(ABS(cur_refund_metrics.refund_amount - prev_refund_metrics.refund_amount) * 100.0 / ABS(prev_refund_metrics.refund_amount), 1) || '%' END AS refund_amount_prev, CASE WHEN yoy_sales_metrics.item_count IS NULL OR yoy_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_refund_metrics.refund_amount IS NULL OR yoy_refund_metrics.refund_amount IS NULL OR yoy_refund_metrics.refund_amount = 0 THEN '-' ELSE (CASE WHEN cur_refund_metrics.refund_amount > yoy_refund_metrics.refund_amount THEN '▲ ' WHEN cur_refund_metrics.refund_amount < yoy_refund_metrics.refund_amount THEN '▼ ' ELSE '' END) || format_number(ABS(cur_refund_metrics.refund_amount - yoy_refund_metrics.refund_amount) * 100.0 / ABS(yoy_refund_metrics.refund_amount), 1) || '%' END AS refund_amount_yoy, CASE WHEN prev_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_refund_metrics.refund_quantity IS NULL OR prev_refund_metrics.refund_quantity IS NULL OR prev_refund_metrics.refund_quantity = 0 THEN '-' ELSE (CASE WHEN cur_refund_metrics.refund_quantity > prev_refund_metrics.refund_quantity THEN '▲ ' WHEN cur_refund_metrics.refund_quantity < prev_refund_metrics.refund_quantity THEN '▼ ' ELSE '' END) || format_number(ABS(cur_refund_metrics.refund_quantity - prev_refund_metrics.refund_quantity) * 100.0 / ABS(prev_refund_metrics.refund_quantity), 1) || '%' END AS refund_quantity_prev, CASE WHEN yoy_sales_metrics.item_count IS NULL OR yoy_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_refund_metrics.refund_quantity IS NULL OR yoy_refund_metrics.refund_quantity IS NULL OR yoy_refund_metrics.refund_quantity = 0 THEN '-' ELSE (CASE WHEN cur_refund_metrics.refund_quantity > yoy_refund_metrics.refund_quantity THEN '▲ ' WHEN cur_refund_metrics.refund_quantity < yoy_refund_metrics.refund_quantity THEN '▼ ' ELSE '' END) || format_number(ABS(cur_refund_metrics.refund_quantity - yoy_refund_metrics.refund_quantity) * 100.0 / ABS(yoy_refund_metrics.refund_quantity), 1) || '%' END AS refund_quantity_yoy, CASE WHEN prev_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_sales_metrics.refund_ratio IS NULL OR prev_sales_metrics.refund_ratio IS NULL OR prev_sales_metrics.refund_ratio = 0 THEN '-' ELSE (CASE WHEN cur_sales_metrics.refund_ratio > prev_sales_metrics.refund_ratio THEN '▲ ' WHEN cur_sales_metrics.refund_ratio < prev_sales_metrics.refund_ratio THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.refund_ratio - prev_sales_metrics.refund_ratio) * 100.0 / ABS(prev_sales_metrics.refund_ratio), 1) || '%' END AS refund_ratio_prev, CASE WHEN yoy_sales_metrics.item_count IS NULL OR yoy_sales_metrics.item_count = 0 THEN '실적이 없습니다.' WHEN cur_sales_metrics.refund_ratio IS NULL OR yoy_sales_metrics.refund_ratio IS NULL OR yoy_sales_metrics.refund_ratio = 0 THEN '-' ELSE (CASE WHEN cur_sales_metrics.refund_ratio > yoy_sales_metrics.refund_ratio THEN '▲ ' WHEN cur_sales_metrics.refund_ratio < yoy_sales_metrics.refund_ratio THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.refund_ratio - yoy_sales_metrics.refund_ratio) * 100.0 / ABS(yoy_sales_metrics.refund_ratio), 1) || '%' END AS refund_ratio_yoy FROM cur_refund_metrics CROSS JOIN cur_sales_metrics CROSS JOIN prev_refund_metrics CROSS JOIN prev_sales_metrics CROSS JOIN yoy_refund_metrics CROSS JOIN yoy_sales_metrics"
+        "WITH cur_refund_metrics AS (SELECT MEASURE(refund_amount) AS refund_amount, MEASURE(refund_quantity) AS refund_quantity FROM commerce_poc.serving.refund_metrics WHERE payment_date BETWEEN :date_range.min AND :date_range.max AND channel_name IN (:channels) AND category IN (:categories)), cur_sales_metrics AS (SELECT MEASURE(refund_ratio) AS refund_ratio, MEASURE(item_count) AS item_count FROM commerce_poc.serving.sales_metrics WHERE payment_date BETWEEN :date_range.min AND :date_range.max AND channel_name IN (:channels) AND category IN (:categories)), prev_refund_metrics AS (SELECT MEASURE(refund_amount) AS refund_amount, MEASURE(refund_quantity) AS refund_quantity FROM commerce_poc.serving.refund_metrics WHERE payment_date BETWEEN date_sub(:date_range.min, datediff(:date_range.max, :date_range.min) + 1) AND date_sub(:date_range.min, 1) AND channel_name IN (:channels) AND category IN (:categories)), prev_sales_metrics AS (SELECT MEASURE(refund_ratio) AS refund_ratio, MEASURE(item_count) AS item_count FROM commerce_poc.serving.sales_metrics WHERE payment_date BETWEEN date_sub(:date_range.min, datediff(:date_range.max, :date_range.min) + 1) AND date_sub(:date_range.min, 1) AND channel_name IN (:channels) AND category IN (:categories)), yoy_refund_metrics AS (SELECT MEASURE(refund_amount) AS refund_amount, MEASURE(refund_quantity) AS refund_quantity FROM commerce_poc.serving.refund_metrics WHERE payment_date BETWEEN add_months(:date_range.min, -12) AND add_months(:date_range.max, -12) AND channel_name IN (:channels) AND category IN (:categories)), yoy_sales_metrics AS (SELECT MEASURE(refund_ratio) AS refund_ratio, MEASURE(item_count) AS item_count FROM commerce_poc.serving.sales_metrics WHERE payment_date BETWEEN add_months(:date_range.min, -12) AND add_months(:date_range.max, -12) AND channel_name IN (:channels) AND category IN (:categories)) SELECT cur_refund_metrics.refund_amount AS refund_amount, cur_refund_metrics.refund_quantity AS refund_quantity, cur_sales_metrics.refund_ratio AS refund_ratio, COALESCE(format_number(cur_refund_metrics.refund_amount, 0) || '원', '-') AS refund_amount_text, COALESCE(format_number(cur_refund_metrics.refund_quantity, 0) || '개', '-') AS refund_quantity_text, COALESCE(format_number(cur_sales_metrics.refund_ratio * 100.0, 1) || '%', '-') AS refund_ratio_text, CASE WHEN prev_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count = 0 THEN '직전 기간: 실적이 없습니다.' WHEN cur_refund_metrics.refund_amount IS NULL OR prev_refund_metrics.refund_amount IS NULL OR prev_refund_metrics.refund_amount = 0 THEN '직전 기간: -' ELSE '' || (CASE WHEN cur_refund_metrics.refund_amount > prev_refund_metrics.refund_amount THEN '▲ ' WHEN cur_refund_metrics.refund_amount < prev_refund_metrics.refund_amount THEN '▼ ' ELSE '' END) || format_number(ABS(cur_refund_metrics.refund_amount - prev_refund_metrics.refund_amount) * 100.0 / ABS(prev_refund_metrics.refund_amount), 1) || '%' || ' 직전 기간 대비' END || ' · ' || CASE WHEN yoy_sales_metrics.item_count IS NULL OR yoy_sales_metrics.item_count = 0 THEN '전년 동기: 실적이 없습니다.' WHEN cur_refund_metrics.refund_amount IS NULL OR yoy_refund_metrics.refund_amount IS NULL OR yoy_refund_metrics.refund_amount = 0 THEN '전년 동기: -' ELSE '전년 동기: ' || (CASE WHEN cur_refund_metrics.refund_amount > yoy_refund_metrics.refund_amount THEN '▲ ' WHEN cur_refund_metrics.refund_amount < yoy_refund_metrics.refund_amount THEN '▼ ' ELSE '' END) || format_number(ABS(cur_refund_metrics.refund_amount - yoy_refund_metrics.refund_amount) * 100.0 / ABS(yoy_refund_metrics.refund_amount), 1) || '%' || '' END AS refund_amount_delta, CASE WHEN prev_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count = 0 THEN '직전 기간: 실적이 없습니다.' WHEN cur_refund_metrics.refund_quantity IS NULL OR prev_refund_metrics.refund_quantity IS NULL OR prev_refund_metrics.refund_quantity = 0 THEN '직전 기간: -' ELSE '' || (CASE WHEN cur_refund_metrics.refund_quantity > prev_refund_metrics.refund_quantity THEN '▲ ' WHEN cur_refund_metrics.refund_quantity < prev_refund_metrics.refund_quantity THEN '▼ ' ELSE '' END) || format_number(ABS(cur_refund_metrics.refund_quantity - prev_refund_metrics.refund_quantity) * 100.0 / ABS(prev_refund_metrics.refund_quantity), 1) || '%' || ' 직전 기간 대비' END || ' · ' || CASE WHEN yoy_sales_metrics.item_count IS NULL OR yoy_sales_metrics.item_count = 0 THEN '전년 동기: 실적이 없습니다.' WHEN cur_refund_metrics.refund_quantity IS NULL OR yoy_refund_metrics.refund_quantity IS NULL OR yoy_refund_metrics.refund_quantity = 0 THEN '전년 동기: -' ELSE '전년 동기: ' || (CASE WHEN cur_refund_metrics.refund_quantity > yoy_refund_metrics.refund_quantity THEN '▲ ' WHEN cur_refund_metrics.refund_quantity < yoy_refund_metrics.refund_quantity THEN '▼ ' ELSE '' END) || format_number(ABS(cur_refund_metrics.refund_quantity - yoy_refund_metrics.refund_quantity) * 100.0 / ABS(yoy_refund_metrics.refund_quantity), 1) || '%' || '' END AS refund_quantity_delta, CASE WHEN prev_sales_metrics.item_count IS NULL OR prev_sales_metrics.item_count = 0 THEN '직전 기간: 실적이 없습니다.' WHEN cur_sales_metrics.refund_ratio IS NULL OR prev_sales_metrics.refund_ratio IS NULL THEN '직전 기간: -' ELSE '' || (CASE WHEN cur_sales_metrics.refund_ratio > prev_sales_metrics.refund_ratio THEN '▲ ' WHEN cur_sales_metrics.refund_ratio < prev_sales_metrics.refund_ratio THEN '▼ ' ELSE '' END) || format_number(ABS(cur_sales_metrics.refund_ratio - prev_sales_metrics.refund_ratio) * 100.0, 1) || '%p' || ' 직전 기간 대비' END AS refund_ratio_delta FROM cur_refund_metrics CROSS JOIN cur_sales_metrics CROSS JOIN prev_refund_metrics CROSS JOIN prev_sales_metrics CROSS JOIN yoy_refund_metrics CROSS JOIN yoy_sales_metrics"
       ],
       "parameters": [
         {
@@ -410,7 +384,7 @@
       "name": "82ba6cf0",
       "displayName": "sales_by_method",
       "queryLines": [
-        "SELECT method_name, MEASURE(total_sales) AS total_sales FROM commerce_poc.serving.sales_metrics WHERE payment_date BETWEEN :date_range.min AND :date_range.max AND channel_name IN (:channels) AND category IN (:categories) GROUP BY ALL ORDER BY total_sales DESC, method_name"
+        "SELECT *, CAST(total_sales AS DOUBLE) / SUM(total_sales) OVER () AS total_sales_share FROM (SELECT method_name, MEASURE(total_sales) AS total_sales FROM commerce_poc.serving.sales_metrics WHERE payment_date BETWEEN :date_range.min AND :date_range.max AND channel_name IN (:channels) AND category IN (:categories) GROUP BY ALL) AS base ORDER BY total_sales DESC, method_name"
       ],
       "parameters": [
         {
@@ -486,7 +460,7 @@
       "name": "73337f11",
       "displayName": "sales_by_category",
       "queryLines": [
-        "SELECT category, MEASURE(total_sales) AS total_sales FROM commerce_poc.serving.sales_metrics WHERE payment_date BETWEEN :date_range.min AND :date_range.max AND channel_name IN (:channels) AND category IN (:categories) GROUP BY ALL ORDER BY total_sales DESC, category"
+        "SELECT *, CAST(total_sales AS DOUBLE) / SUM(total_sales) OVER () AS total_sales_share FROM (SELECT category, MEASURE(total_sales) AS total_sales FROM commerce_poc.serving.sales_metrics WHERE payment_date BETWEEN :date_range.min AND :date_range.max AND channel_name IN (:channels) AND category IN (:categories) GROUP BY ALL) AS base ORDER BY total_sales DESC, category"
       ],
       "parameters": [
         {
@@ -890,11 +864,11 @@
               {
                 "name": "main_query",
                 "query": {
-                  "datasetName": "c582e3c4",
+                  "datasetName": "2287e411",
                   "fields": [
                     {
-                      "name": "prev_period",
-                      "expression": "`prev_period`"
+                      "name": "total_sales_text",
+                      "expression": "`total_sales_text`"
                     }
                   ],
                   "disaggregated": true
@@ -906,13 +880,15 @@
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "prev_period",
-                  "displayName": "이전 기간"
+                  "fieldName": "total_sales_text",
+                  "displayName": "total_sales_text"
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "비교 기간 · 이전 기간"
+                "title": "총판매금액",
+                "showDescription": true,
+                "description": "비교 기간(자동): 직전 같은 길이 · 전년 동기"
               }
             }
           },
@@ -920,7 +896,7 @@
             "x": 0,
             "y": 0,
             "width": 3,
-            "height": 2
+            "height": 4
           }
         },
         {
@@ -930,11 +906,11 @@
               {
                 "name": "main_query",
                 "query": {
-                  "datasetName": "c582e3c4",
+                  "datasetName": "2287e411",
                   "fields": [
                     {
-                      "name": "yoy_period",
-                      "expression": "`yoy_period`"
+                      "name": "total_sales_delta",
+                      "expression": "`total_sales_delta`"
                     }
                   ],
                   "disaggregated": true
@@ -946,19 +922,19 @@
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "yoy_period",
-                  "displayName": "전년 동기"
+                  "fieldName": "total_sales_delta",
+                  "displayName": "total_sales_delta"
                 }
               },
               "frame": {
-                "showTitle": true,
-                "title": "비교 기간 · 전년 동기"
+                "showTitle": false,
+                "title": ""
               }
             }
           },
           "position": {
-            "x": 3,
-            "y": 0,
+            "x": 0,
+            "y": 4,
             "width": 3,
             "height": 2
           }
@@ -973,8 +949,8 @@
                   "datasetName": "2287e411",
                   "fields": [
                     {
-                      "name": "total_sales",
-                      "expression": "`total_sales`"
+                      "name": "net_sales_text",
+                      "expression": "`net_sales_text`"
                     }
                   ],
                   "disaggregated": true
@@ -986,21 +962,21 @@
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "total_sales",
-                  "displayName": "총판매금액"
+                  "fieldName": "net_sales_text",
+                  "displayName": "net_sales_text"
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "총판매금액"
+                "title": "순판매금액"
               }
             }
           },
           "position": {
-            "x": 0,
-            "y": 2,
-            "width": 2,
-            "height": 3
+            "x": 3,
+            "y": 0,
+            "width": 3,
+            "height": 2
           }
         },
         {
@@ -1013,8 +989,8 @@
                   "datasetName": "2287e411",
                   "fields": [
                     {
-                      "name": "total_sales_prev",
-                      "expression": "`total_sales_prev`"
+                      "name": "net_sales_delta",
+                      "expression": "`net_sales_delta`"
                     }
                   ],
                   "disaggregated": true
@@ -1026,21 +1002,21 @@
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "total_sales_prev",
-                  "displayName": "total_sales_prev"
+                  "fieldName": "net_sales_delta",
+                  "displayName": "net_sales_delta"
                 }
               },
               "frame": {
-                "showTitle": true,
-                "title": "총판매금액 · 이전 기간 대비"
+                "showTitle": false,
+                "title": ""
               }
             }
           },
           "position": {
-            "x": 0,
-            "y": 5,
-            "width": 1,
-            "height": 2
+            "x": 3,
+            "y": 2,
+            "width": 3,
+            "height": 1
           }
         },
         {
@@ -1053,8 +1029,8 @@
                   "datasetName": "2287e411",
                   "fields": [
                     {
-                      "name": "total_sales_yoy",
-                      "expression": "`total_sales_yoy`"
+                      "name": "refund_ratio_text",
+                      "expression": "`refund_ratio_text`"
                     }
                   ],
                   "disaggregated": true
@@ -1066,20 +1042,22 @@
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "total_sales_yoy",
-                  "displayName": "total_sales_yoy"
+                  "fieldName": "refund_ratio_text",
+                  "displayName": "refund_ratio_text"
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "총판매금액 · 전년 동기 대비"
+                "title": "환불금액비율",
+                "showDescription": true,
+                "description": "낮을수록 좋은 지표입니다."
               }
             }
           },
           "position": {
-            "x": 1,
-            "y": 5,
-            "width": 1,
+            "x": 3,
+            "y": 3,
+            "width": 3,
             "height": 2
           }
         },
@@ -1093,8 +1071,8 @@
                   "datasetName": "2287e411",
                   "fields": [
                     {
-                      "name": "net_sales",
-                      "expression": "`net_sales`"
+                      "name": "refund_ratio_delta",
+                      "expression": "`refund_ratio_delta`"
                     }
                   ],
                   "disaggregated": true
@@ -1106,21 +1084,21 @@
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "net_sales",
-                  "displayName": "순판매금액"
+                  "fieldName": "refund_ratio_delta",
+                  "displayName": "refund_ratio_delta"
                 }
               },
               "frame": {
-                "showTitle": true,
-                "title": "순판매금액"
+                "showTitle": false,
+                "title": ""
               }
             }
           },
           "position": {
-            "x": 2,
-            "y": 2,
-            "width": 2,
-            "height": 3
+            "x": 3,
+            "y": 5,
+            "width": 3,
+            "height": 1
           }
         },
         {
@@ -1133,8 +1111,8 @@
                   "datasetName": "2287e411",
                   "fields": [
                     {
-                      "name": "net_sales_prev",
-                      "expression": "`net_sales_prev`"
+                      "name": "paying_customers_text",
+                      "expression": "`paying_customers_text`"
                     }
                   ],
                   "disaggregated": true
@@ -1146,19 +1124,19 @@
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "net_sales_prev",
-                  "displayName": "net_sales_prev"
+                  "fieldName": "paying_customers_text",
+                  "displayName": "paying_customers_text"
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "순판매금액 · 이전 기간 대비"
+                "title": "결제고객수"
               }
             }
           },
           "position": {
-            "x": 2,
-            "y": 5,
+            "x": 0,
+            "y": 6,
             "width": 1,
             "height": 2
           }
@@ -1173,8 +1151,8 @@
                   "datasetName": "2287e411",
                   "fields": [
                     {
-                      "name": "net_sales_yoy",
-                      "expression": "`net_sales_yoy`"
+                      "name": "paying_customers_delta",
+                      "expression": "`paying_customers_delta`"
                     }
                   ],
                   "disaggregated": true
@@ -1186,21 +1164,21 @@
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "net_sales_yoy",
-                  "displayName": "net_sales_yoy"
+                  "fieldName": "paying_customers_delta",
+                  "displayName": "paying_customers_delta"
                 }
               },
               "frame": {
-                "showTitle": true,
-                "title": "순판매금액 · 전년 동기 대비"
+                "showTitle": false,
+                "title": ""
               }
             }
           },
           "position": {
-            "x": 3,
-            "y": 5,
+            "x": 0,
+            "y": 8,
             "width": 1,
-            "height": 2
+            "height": 1
           }
         },
         {
@@ -1213,8 +1191,8 @@
                   "datasetName": "2287e411",
                   "fields": [
                     {
-                      "name": "refund_ratio",
-                      "expression": "`refund_ratio`"
+                      "name": "average_order_value_text",
+                      "expression": "`average_order_value_text`"
                     }
                   ],
                   "disaggregated": true
@@ -1226,21 +1204,21 @@
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "refund_ratio",
-                  "displayName": "환불금액비율"
+                  "fieldName": "average_order_value_text",
+                  "displayName": "average_order_value_text"
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "환불금액비율 (낮을수록 좋은 지표입니다)"
+                "title": "객단가"
               }
             }
           },
           "position": {
-            "x": 4,
-            "y": 2,
-            "width": 2,
-            "height": 3
+            "x": 1,
+            "y": 6,
+            "width": 1,
+            "height": 2
           }
         },
         {
@@ -1253,8 +1231,8 @@
                   "datasetName": "2287e411",
                   "fields": [
                     {
-                      "name": "refund_ratio_prev",
-                      "expression": "`refund_ratio_prev`"
+                      "name": "average_order_value_delta",
+                      "expression": "`average_order_value_delta`"
                     }
                   ],
                   "disaggregated": true
@@ -1266,21 +1244,21 @@
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "refund_ratio_prev",
-                  "displayName": "refund_ratio_prev"
+                  "fieldName": "average_order_value_delta",
+                  "displayName": "average_order_value_delta"
                 }
               },
               "frame": {
-                "showTitle": true,
-                "title": "환불금액비율 · 이전 기간 대비"
+                "showTitle": false,
+                "title": ""
               }
             }
           },
           "position": {
-            "x": 4,
-            "y": 5,
+            "x": 1,
+            "y": 8,
             "width": 1,
-            "height": 2
+            "height": 1
           }
         },
         {
@@ -1293,8 +1271,8 @@
                   "datasetName": "2287e411",
                   "fields": [
                     {
-                      "name": "refund_ratio_yoy",
-                      "expression": "`refund_ratio_yoy`"
+                      "name": "item_count_text",
+                      "expression": "`item_count_text`"
                     }
                   ],
                   "disaggregated": true
@@ -1306,19 +1284,19 @@
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "refund_ratio_yoy",
-                  "displayName": "refund_ratio_yoy"
+                  "fieldName": "item_count_text",
+                  "displayName": "item_count_text"
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "환불금액비율 · 전년 동기 대비"
+                "title": "상품결제건수"
               }
             }
           },
           "position": {
-            "x": 5,
-            "y": 5,
+            "x": 2,
+            "y": 6,
             "width": 1,
             "height": 2
           }
@@ -1333,8 +1311,8 @@
                   "datasetName": "2287e411",
                   "fields": [
                     {
-                      "name": "paying_customers",
-                      "expression": "`paying_customers`"
+                      "name": "item_count_delta",
+                      "expression": "`item_count_delta`"
                     }
                   ],
                   "disaggregated": true
@@ -1346,21 +1324,21 @@
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "paying_customers",
-                  "displayName": "결제고객수"
+                  "fieldName": "item_count_delta",
+                  "displayName": "item_count_delta"
                 }
               },
               "frame": {
-                "showTitle": true,
-                "title": "결제고객수"
+                "showTitle": false,
+                "title": ""
               }
             }
           },
           "position": {
-            "x": 0,
-            "y": 7,
+            "x": 2,
+            "y": 8,
             "width": 1,
-            "height": 2
+            "height": 1
           }
         },
         {
@@ -1373,8 +1351,8 @@
                   "datasetName": "2287e411",
                   "fields": [
                     {
-                      "name": "paying_customers_prev",
-                      "expression": "`paying_customers_prev`"
+                      "name": "unit_price_per_item_text",
+                      "expression": "`unit_price_per_item_text`"
                     }
                   ],
                   "disaggregated": true
@@ -1386,19 +1364,19 @@
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "paying_customers_prev",
-                  "displayName": "paying_customers_prev"
+                  "fieldName": "unit_price_per_item_text",
+                  "displayName": "unit_price_per_item_text"
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "결제고객수 · 이전 기간 대비"
+                "title": "상품결제단가"
               }
             }
           },
           "position": {
-            "x": 0,
-            "y": 9,
+            "x": 3,
+            "y": 6,
             "width": 1,
             "height": 2
           }
@@ -1413,8 +1391,8 @@
                   "datasetName": "2287e411",
                   "fields": [
                     {
-                      "name": "average_order_value",
-                      "expression": "`average_order_value`"
+                      "name": "unit_price_per_item_delta",
+                      "expression": "`unit_price_per_item_delta`"
                     }
                   ],
                   "disaggregated": true
@@ -1426,21 +1404,21 @@
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "average_order_value",
-                  "displayName": "객단가"
+                  "fieldName": "unit_price_per_item_delta",
+                  "displayName": "unit_price_per_item_delta"
                 }
               },
               "frame": {
-                "showTitle": true,
-                "title": "객단가"
+                "showTitle": false,
+                "title": ""
               }
             }
           },
           "position": {
-            "x": 1,
-            "y": 7,
+            "x": 3,
+            "y": 8,
             "width": 1,
-            "height": 2
+            "height": 1
           }
         },
         {
@@ -1453,8 +1431,8 @@
                   "datasetName": "2287e411",
                   "fields": [
                     {
-                      "name": "average_order_value_prev",
-                      "expression": "`average_order_value_prev`"
+                      "name": "refund_amount_text",
+                      "expression": "`refund_amount_text`"
                     }
                   ],
                   "disaggregated": true
@@ -1466,20 +1444,20 @@
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "average_order_value_prev",
-                  "displayName": "average_order_value_prev"
+                  "fieldName": "refund_amount_text",
+                  "displayName": "refund_amount_text"
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "객단가 · 이전 기간 대비"
+                "title": "환불금액"
               }
             }
           },
           "position": {
-            "x": 1,
-            "y": 9,
-            "width": 1,
+            "x": 4,
+            "y": 6,
+            "width": 2,
             "height": 2
           }
         },
@@ -1493,8 +1471,8 @@
                   "datasetName": "2287e411",
                   "fields": [
                     {
-                      "name": "item_count",
-                      "expression": "`item_count`"
+                      "name": "refund_amount_delta",
+                      "expression": "`refund_amount_delta`"
                     }
                   ],
                   "disaggregated": true
@@ -1506,226 +1484,26 @@
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "item_count",
-                  "displayName": "상품결제건수"
+                  "fieldName": "refund_amount_delta",
+                  "displayName": "refund_amount_delta"
                 }
               },
               "frame": {
-                "showTitle": true,
-                "title": "상품결제건수"
+                "showTitle": false,
+                "title": ""
               }
             }
           },
           "position": {
-            "x": 2,
-            "y": 7,
-            "width": 1,
-            "height": 2
+            "x": 4,
+            "y": 8,
+            "width": 2,
+            "height": 1
           }
         },
         {
           "widget": {
             "name": "8c404b63",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "2287e411",
-                  "fields": [
-                    {
-                      "name": "item_count_prev",
-                      "expression": "`item_count_prev`"
-                    }
-                  ],
-                  "disaggregated": true
-                }
-              }
-            ],
-            "spec": {
-              "version": 2,
-              "widgetType": "counter",
-              "encodings": {
-                "value": {
-                  "fieldName": "item_count_prev",
-                  "displayName": "item_count_prev"
-                }
-              },
-              "frame": {
-                "showTitle": true,
-                "title": "상품결제건수 · 이전 기간 대비"
-              }
-            }
-          },
-          "position": {
-            "x": 2,
-            "y": 9,
-            "width": 1,
-            "height": 2
-          }
-        },
-        {
-          "widget": {
-            "name": "a481814f",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "2287e411",
-                  "fields": [
-                    {
-                      "name": "unit_price_per_item",
-                      "expression": "`unit_price_per_item`"
-                    }
-                  ],
-                  "disaggregated": true
-                }
-              }
-            ],
-            "spec": {
-              "version": 2,
-              "widgetType": "counter",
-              "encodings": {
-                "value": {
-                  "fieldName": "unit_price_per_item",
-                  "displayName": "상품결제단가"
-                }
-              },
-              "frame": {
-                "showTitle": true,
-                "title": "상품결제단가"
-              }
-            }
-          },
-          "position": {
-            "x": 3,
-            "y": 7,
-            "width": 1,
-            "height": 2
-          }
-        },
-        {
-          "widget": {
-            "name": "15b467c4",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "2287e411",
-                  "fields": [
-                    {
-                      "name": "unit_price_per_item_prev",
-                      "expression": "`unit_price_per_item_prev`"
-                    }
-                  ],
-                  "disaggregated": true
-                }
-              }
-            ],
-            "spec": {
-              "version": 2,
-              "widgetType": "counter",
-              "encodings": {
-                "value": {
-                  "fieldName": "unit_price_per_item_prev",
-                  "displayName": "unit_price_per_item_prev"
-                }
-              },
-              "frame": {
-                "showTitle": true,
-                "title": "상품결제단가 · 이전 기간 대비"
-              }
-            }
-          },
-          "position": {
-            "x": 3,
-            "y": 9,
-            "width": 1,
-            "height": 2
-          }
-        },
-        {
-          "widget": {
-            "name": "8d83ce5e",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "2287e411",
-                  "fields": [
-                    {
-                      "name": "refund_amount",
-                      "expression": "`refund_amount`"
-                    }
-                  ],
-                  "disaggregated": true
-                }
-              }
-            ],
-            "spec": {
-              "version": 2,
-              "widgetType": "counter",
-              "encodings": {
-                "value": {
-                  "fieldName": "refund_amount",
-                  "displayName": "환불금액"
-                }
-              },
-              "frame": {
-                "showTitle": true,
-                "title": "환불금액"
-              }
-            }
-          },
-          "position": {
-            "x": 4,
-            "y": 7,
-            "width": 2,
-            "height": 2
-          }
-        },
-        {
-          "widget": {
-            "name": "424ba9e8",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "2287e411",
-                  "fields": [
-                    {
-                      "name": "refund_amount_prev",
-                      "expression": "`refund_amount_prev`"
-                    }
-                  ],
-                  "disaggregated": true
-                }
-              }
-            ],
-            "spec": {
-              "version": 2,
-              "widgetType": "counter",
-              "encodings": {
-                "value": {
-                  "fieldName": "refund_amount_prev",
-                  "displayName": "refund_amount_prev"
-                }
-              },
-              "frame": {
-                "showTitle": true,
-                "title": "환불금액 · 이전 기간 대비"
-              }
-            }
-          },
-          "position": {
-            "x": 4,
-            "y": 9,
-            "width": 2,
-            "height": 2
-          }
-        },
-        {
-          "widget": {
-            "name": "5a67fad7",
             "queries": [
               {
                 "name": "main_query",
@@ -1791,20 +1569,22 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "채널별 총판매금액 추이 (주별, 첫·마지막 주는 조회 기간 경계로 부분 주일 수 있음)"
+                "title": "채널별 총판매금액 추이 (주별)",
+                "showDescription": true,
+                "description": "첫 주와 마지막 주는 부분 기간일 수 있어 표시합니다."
               }
             }
           },
           "position": {
             "x": 0,
-            "y": 11,
+            "y": 9,
             "width": 6,
             "height": 6
           }
         },
         {
           "widget": {
-            "name": "18aa4da8",
+            "name": "a481814f",
             "queries": [
               {
                 "name": "main_query",
@@ -1816,8 +1596,8 @@
                       "expression": "`channel_name`"
                     },
                     {
-                      "name": "sum(net_sales)",
-                      "expression": "SUM(`net_sales`)"
+                      "name": "sum(net_sales_share)",
+                      "expression": "SUM(`net_sales_share`)"
                     }
                   ],
                   "disaggregated": false
@@ -1829,8 +1609,8 @@
               "widgetType": "bar",
               "encodings": {
                 "x": {
-                  "fieldName": "sum(net_sales)",
-                  "displayName": "순판매금액",
+                  "fieldName": "sum(net_sales_share)",
+                  "displayName": "순판매금액 비중",
                   "scale": {
                     "type": "quantitative"
                   }
@@ -1844,24 +1624,45 @@
                       "by": "x-reversed"
                     }
                   }
+                },
+                "color": {
+                  "fieldName": "channel_name",
+                  "displayName": "채널",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "자사몰",
+                        "color": "#2a78d6"
+                      },
+                      {
+                        "value": "종합 오픈마켓",
+                        "color": "#eb6834"
+                      },
+                      {
+                        "value": "스포츠 전문몰",
+                        "color": "#1baf7a"
+                      }
+                    ]
+                  }
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "채널별 순판매금액 비중"
+                "title": "채널별 순판매금액 비중 (큰 순)"
               }
             }
           },
           "position": {
             "x": 0,
-            "y": 17,
+            "y": 15,
             "width": 3,
             "height": 6
           }
         },
         {
           "widget": {
-            "name": "d8eefef9",
+            "name": "15b467c4",
             "queries": [
               {
                 "name": "main_query",
@@ -1902,20 +1703,22 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "환불금액비율 추이 (주별, 첫·마지막 주는 부분 주일 수 있음)"
+                "title": "환불금액비율 추이 (주별, 채널 합계)",
+                "showDescription": true,
+                "description": "주별 값은 그 주의 분자·분모로 다시 계산한 값입니다."
               }
             }
           },
           "position": {
             "x": 3,
-            "y": 17,
+            "y": 15,
             "width": 3,
             "height": 6
           }
         },
         {
           "widget": {
-            "name": "a7acb2f3",
+            "name": "8d83ce5e",
             "queries": [
               {
                 "name": "main_query",
@@ -1927,8 +1730,8 @@
                       "expression": "`method_name`"
                     },
                     {
-                      "name": "sum(total_sales)",
-                      "expression": "SUM(`total_sales`)"
+                      "name": "sum(total_sales_share)",
+                      "expression": "SUM(`total_sales_share`)"
                     }
                   ],
                   "disaggregated": false
@@ -1940,8 +1743,8 @@
               "widgetType": "bar",
               "encodings": {
                 "x": {
-                  "fieldName": "sum(total_sales)",
-                  "displayName": "총판매금액",
+                  "fieldName": "sum(total_sales_share)",
+                  "displayName": "총판매금액 비중",
                   "scale": {
                     "type": "quantitative"
                   }
@@ -1959,20 +1762,20 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "결제수단별 총판매금액"
+                "title": "결제수단별 총판매금액 (큰 순)"
               }
             }
           },
           "position": {
             "x": 0,
-            "y": 23,
+            "y": 21,
             "width": 3,
             "height": 6
           }
         },
         {
           "widget": {
-            "name": "176e0d3e",
+            "name": "424ba9e8",
             "queries": [
               {
                 "name": "main_query",
@@ -1984,8 +1787,8 @@
                       "expression": "`category`"
                     },
                     {
-                      "name": "sum(total_sales)",
-                      "expression": "SUM(`total_sales`)"
+                      "name": "sum(total_sales_share)",
+                      "expression": "SUM(`total_sales_share`)"
                     }
                   ],
                   "disaggregated": false
@@ -1997,8 +1800,8 @@
               "widgetType": "bar",
               "encodings": {
                 "x": {
-                  "fieldName": "sum(total_sales)",
-                  "displayName": "총판매금액",
+                  "fieldName": "sum(total_sales_share)",
+                  "displayName": "총판매금액 비중",
                   "scale": {
                     "type": "quantitative"
                   }
@@ -2016,20 +1819,20 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "카테고리별 총판매금액"
+                "title": "카테고리별 총판매금액 (큰 순)"
               }
             }
           },
           "position": {
             "x": 3,
-            "y": 23,
+            "y": 21,
             "width": 3,
             "height": 6
           }
         },
         {
           "widget": {
-            "name": "419ae168",
+            "name": "5a67fad7",
             "queries": [
               {
                 "name": "main_query",
@@ -2098,13 +1901,13 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "채널별 지표"
+                "title": "채널별 지표 (상세)"
               }
             }
           },
           "position": {
             "x": 0,
-            "y": 29,
+            "y": 27,
             "width": 6,
             "height": 4
           }
@@ -2123,11 +1926,11 @@
               {
                 "name": "main_query",
                 "query": {
-                  "datasetName": "c582e3c4",
+                  "datasetName": "68e4e686",
                   "fields": [
                     {
-                      "name": "prev_period",
-                      "expression": "`prev_period`"
+                      "name": "refund_amount_text",
+                      "expression": "`refund_amount_text`"
                     }
                   ],
                   "disaggregated": true
@@ -2139,13 +1942,15 @@
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "prev_period",
-                  "displayName": "이전 기간"
+                  "fieldName": "refund_amount_text",
+                  "displayName": "refund_amount_text"
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "비교 기간 · 이전 기간"
+                "title": "환불금액",
+                "showDescription": true,
+                "description": "환불은 원결제일 기준으로 귀속합니다"
               }
             }
           },
@@ -2153,7 +1958,7 @@
             "x": 0,
             "y": 0,
             "width": 3,
-            "height": 2
+            "height": 4
           }
         },
         {
@@ -2163,11 +1968,11 @@
               {
                 "name": "main_query",
                 "query": {
-                  "datasetName": "c582e3c4",
+                  "datasetName": "68e4e686",
                   "fields": [
                     {
-                      "name": "yoy_period",
-                      "expression": "`yoy_period`"
+                      "name": "refund_amount_delta",
+                      "expression": "`refund_amount_delta`"
                     }
                   ],
                   "disaggregated": true
@@ -2179,19 +1984,19 @@
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "yoy_period",
-                  "displayName": "전년 동기"
+                  "fieldName": "refund_amount_delta",
+                  "displayName": "refund_amount_delta"
                 }
               },
               "frame": {
-                "showTitle": true,
-                "title": "비교 기간 · 전년 동기"
+                "showTitle": false,
+                "title": ""
               }
             }
           },
           "position": {
-            "x": 3,
-            "y": 0,
+            "x": 0,
+            "y": 4,
             "width": 3,
             "height": 2
           }
@@ -2206,8 +2011,8 @@
                   "datasetName": "68e4e686",
                   "fields": [
                     {
-                      "name": "refund_amount",
-                      "expression": "`refund_amount`"
+                      "name": "refund_quantity_text",
+                      "expression": "`refund_quantity_text`"
                     }
                   ],
                   "disaggregated": true
@@ -2219,21 +2024,21 @@
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "refund_amount",
-                  "displayName": "환불금액"
+                  "fieldName": "refund_quantity_text",
+                  "displayName": "refund_quantity_text"
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "환불금액"
+                "title": "환불수량"
               }
             }
           },
           "position": {
-            "x": 0,
-            "y": 2,
-            "width": 2,
-            "height": 3
+            "x": 3,
+            "y": 0,
+            "width": 3,
+            "height": 2
           }
         },
         {
@@ -2246,8 +2051,8 @@
                   "datasetName": "68e4e686",
                   "fields": [
                     {
-                      "name": "refund_amount_prev",
-                      "expression": "`refund_amount_prev`"
+                      "name": "refund_quantity_delta",
+                      "expression": "`refund_quantity_delta`"
                     }
                   ],
                   "disaggregated": true
@@ -2259,21 +2064,21 @@
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "refund_amount_prev",
-                  "displayName": "refund_amount_prev"
+                  "fieldName": "refund_quantity_delta",
+                  "displayName": "refund_quantity_delta"
                 }
               },
               "frame": {
-                "showTitle": true,
-                "title": "환불금액 · 이전 기간 대비"
+                "showTitle": false,
+                "title": ""
               }
             }
           },
           "position": {
-            "x": 0,
-            "y": 5,
-            "width": 1,
-            "height": 2
+            "x": 3,
+            "y": 2,
+            "width": 3,
+            "height": 1
           }
         },
         {
@@ -2286,8 +2091,8 @@
                   "datasetName": "68e4e686",
                   "fields": [
                     {
-                      "name": "refund_amount_yoy",
-                      "expression": "`refund_amount_yoy`"
+                      "name": "refund_ratio_text",
+                      "expression": "`refund_ratio_text`"
                     }
                   ],
                   "disaggregated": true
@@ -2299,20 +2104,22 @@
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "refund_amount_yoy",
-                  "displayName": "refund_amount_yoy"
+                  "fieldName": "refund_ratio_text",
+                  "displayName": "refund_ratio_text"
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "환불금액 · 전년 동기 대비"
+                "title": "환불금액비율",
+                "showDescription": true,
+                "description": "낮을수록 좋은 지표입니다."
               }
             }
           },
           "position": {
-            "x": 1,
-            "y": 5,
-            "width": 1,
+            "x": 3,
+            "y": 3,
+            "width": 3,
             "height": 2
           }
         },
@@ -2326,8 +2133,8 @@
                   "datasetName": "68e4e686",
                   "fields": [
                     {
-                      "name": "refund_quantity",
-                      "expression": "`refund_quantity`"
+                      "name": "refund_ratio_delta",
+                      "expression": "`refund_ratio_delta`"
                     }
                   ],
                   "disaggregated": true
@@ -2339,226 +2146,26 @@
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "refund_quantity",
-                  "displayName": "환불수량"
+                  "fieldName": "refund_ratio_delta",
+                  "displayName": "refund_ratio_delta"
                 }
               },
               "frame": {
-                "showTitle": true,
-                "title": "환불수량"
-              }
-            }
-          },
-          "position": {
-            "x": 2,
-            "y": 2,
-            "width": 2,
-            "height": 3
-          }
-        },
-        {
-          "widget": {
-            "name": "aee347b3",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "68e4e686",
-                  "fields": [
-                    {
-                      "name": "refund_quantity_prev",
-                      "expression": "`refund_quantity_prev`"
-                    }
-                  ],
-                  "disaggregated": true
-                }
-              }
-            ],
-            "spec": {
-              "version": 2,
-              "widgetType": "counter",
-              "encodings": {
-                "value": {
-                  "fieldName": "refund_quantity_prev",
-                  "displayName": "refund_quantity_prev"
-                }
-              },
-              "frame": {
-                "showTitle": true,
-                "title": "환불수량 · 이전 기간 대비"
-              }
-            }
-          },
-          "position": {
-            "x": 2,
-            "y": 5,
-            "width": 1,
-            "height": 2
-          }
-        },
-        {
-          "widget": {
-            "name": "088b18ac",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "68e4e686",
-                  "fields": [
-                    {
-                      "name": "refund_quantity_yoy",
-                      "expression": "`refund_quantity_yoy`"
-                    }
-                  ],
-                  "disaggregated": true
-                }
-              }
-            ],
-            "spec": {
-              "version": 2,
-              "widgetType": "counter",
-              "encodings": {
-                "value": {
-                  "fieldName": "refund_quantity_yoy",
-                  "displayName": "refund_quantity_yoy"
-                }
-              },
-              "frame": {
-                "showTitle": true,
-                "title": "환불수량 · 전년 동기 대비"
+                "showTitle": false,
+                "title": ""
               }
             }
           },
           "position": {
             "x": 3,
             "y": 5,
-            "width": 1,
-            "height": 2
+            "width": 3,
+            "height": 1
           }
         },
         {
           "widget": {
-            "name": "772dcb5c",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "68e4e686",
-                  "fields": [
-                    {
-                      "name": "refund_ratio",
-                      "expression": "`refund_ratio`"
-                    }
-                  ],
-                  "disaggregated": true
-                }
-              }
-            ],
-            "spec": {
-              "version": 2,
-              "widgetType": "counter",
-              "encodings": {
-                "value": {
-                  "fieldName": "refund_ratio",
-                  "displayName": "환불금액비율"
-                }
-              },
-              "frame": {
-                "showTitle": true,
-                "title": "환불금액비율 (낮을수록 좋은 지표입니다)"
-              }
-            }
-          },
-          "position": {
-            "x": 4,
-            "y": 2,
-            "width": 2,
-            "height": 3
-          }
-        },
-        {
-          "widget": {
-            "name": "351df766",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "68e4e686",
-                  "fields": [
-                    {
-                      "name": "refund_ratio_prev",
-                      "expression": "`refund_ratio_prev`"
-                    }
-                  ],
-                  "disaggregated": true
-                }
-              }
-            ],
-            "spec": {
-              "version": 2,
-              "widgetType": "counter",
-              "encodings": {
-                "value": {
-                  "fieldName": "refund_ratio_prev",
-                  "displayName": "refund_ratio_prev"
-                }
-              },
-              "frame": {
-                "showTitle": true,
-                "title": "환불금액비율 · 이전 기간 대비"
-              }
-            }
-          },
-          "position": {
-            "x": 4,
-            "y": 5,
-            "width": 1,
-            "height": 2
-          }
-        },
-        {
-          "widget": {
-            "name": "934d7753",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "68e4e686",
-                  "fields": [
-                    {
-                      "name": "refund_ratio_yoy",
-                      "expression": "`refund_ratio_yoy`"
-                    }
-                  ],
-                  "disaggregated": true
-                }
-              }
-            ],
-            "spec": {
-              "version": 2,
-              "widgetType": "counter",
-              "encodings": {
-                "value": {
-                  "fieldName": "refund_ratio_yoy",
-                  "displayName": "refund_ratio_yoy"
-                }
-              },
-              "frame": {
-                "showTitle": true,
-                "title": "환불금액비율 · 전년 동기 대비"
-              }
-            }
-          },
-          "position": {
-            "x": 5,
-            "y": 5,
-            "width": 1,
-            "height": 2
-          }
-        },
-        {
-          "widget": {
-            "name": "c42d95b2",
+            "name": "aee347b3",
             "queries": [
               {
                 "name": "main_query",
@@ -2570,8 +2177,8 @@
                       "expression": "`refund_reason`"
                     },
                     {
-                      "name": "sum(refund_amount)",
-                      "expression": "SUM(`refund_amount`)"
+                      "name": "sum(refund_amount_share)",
+                      "expression": "SUM(`refund_amount_share`)"
                     }
                   ],
                   "disaggregated": false
@@ -2583,8 +2190,8 @@
               "widgetType": "bar",
               "encodings": {
                 "x": {
-                  "fieldName": "sum(refund_amount)",
-                  "displayName": "환불금액",
+                  "fieldName": "sum(refund_amount_share)",
+                  "displayName": "환불금액 비중",
                   "scale": {
                     "type": "quantitative"
                   }
@@ -2602,20 +2209,22 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "사유별 환불금액"
+                "title": "사유별 환불금액 (큰 순 · 비중)",
+                "showDescription": true,
+                "description": "금액·수량 상세는 아래 표에서 봅니다."
               }
             }
           },
           "position": {
             "x": 0,
-            "y": 7,
+            "y": 6,
             "width": 3,
             "height": 6
           }
         },
         {
           "widget": {
-            "name": "a0f30f77",
+            "name": "088b18ac",
             "queries": [
               {
                 "name": "main_query",
@@ -2655,24 +2264,47 @@
                       "by": "x-reversed"
                     }
                   }
+                },
+                "color": {
+                  "fieldName": "channel_name",
+                  "displayName": "채널",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "자사몰",
+                        "color": "#2a78d6"
+                      },
+                      {
+                        "value": "종합 오픈마켓",
+                        "color": "#eb6834"
+                      },
+                      {
+                        "value": "스포츠 전문몰",
+                        "color": "#1baf7a"
+                      }
+                    ]
+                  }
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "채널별 환불금액비율"
+                "title": "채널별 환불금액비율 (큰 순)",
+                "showDescription": true,
+                "description": "금액이 아니라 비율로 비교해야 채널 규모 차이가 가려지지 않습니다."
               }
             }
           },
           "position": {
             "x": 3,
-            "y": 7,
+            "y": 6,
             "width": 3,
             "height": 6
           }
         },
         {
           "widget": {
-            "name": "58b5d7c7",
+            "name": "772dcb5c",
             "queries": [
               {
                 "name": "main_query",
@@ -2713,20 +2345,22 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "결제일별 환불금액 추이 (원결제일 귀속, 주별, 최근 주는 환불 접수 중이라 낮을 수 있음)"
+                "title": "결제일별 환불금액 추이 (원결제일 귀속 · 주별)",
+                "showDescription": true,
+                "description": "최근 주는 아직 환불이 접수 중일 수 있어 값이 낮게 보일 수 있습니다."
               }
             }
           },
           "position": {
             "x": 0,
-            "y": 13,
+            "y": 12,
             "width": 6,
             "height": 6
           }
         },
         {
           "widget": {
-            "name": "b0fa0713",
+            "name": "351df766",
             "queries": [
               {
                 "name": "main_query",
@@ -2779,13 +2413,13 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "사유별 환불 상세"
+                "title": "사유별 환불 (상세)"
               }
             }
           },
           "position": {
             "x": 0,
-            "y": 19,
+            "y": 18,
             "width": 6,
             "height": 5
           }
@@ -3262,19 +2896,6 @@
             "name": "15139bdf",
             "queries": [
               {
-                "name": "param_14fbdeaa_date_range",
-                "query": {
-                  "datasetName": "c582e3c4",
-                  "parameters": [
-                    {
-                      "name": "date_range",
-                      "keyword": "date_range"
-                    }
-                  ],
-                  "disaggregated": false
-                }
-              },
-              {
                 "name": "param_91e13a26_date_range",
                 "query": {
                   "datasetName": "2287e411",
@@ -3423,10 +3044,6 @@
               "widgetType": "filter-date-range-picker",
               "encodings": {
                 "fields": [
-                  {
-                    "parameterName": "date_range",
-                    "queryName": "param_14fbdeaa_date_range"
-                  },
                   {
                     "parameterName": "date_range",
                     "queryName": "param_91e13a26_date_range"

@@ -89,7 +89,9 @@ def field(name: str, aggregate: str = "") -> dict:
 
 def widget_spec(widget: dict) -> tuple:
     """(쿼리 필드 목록, disaggregated 여부, spec dict)."""
-    frame = {"showTitle": True, "title": widget["title"]}
+    frame = {"showTitle": bool(widget["title"]), "title": widget["title"]}
+    if widget.get("note"):   # 제목 아래 작은 설명 (와이어프레임의 카드·차트 아래 글)
+        frame.update({"showDescription": True, "description": widget["note"]})
     kind = widget["kind"]
     if kind == "counter":
         encodings = {"value": {"fieldName": widget["value"], "displayName": label(widget["value"])}}
@@ -116,7 +118,8 @@ def widget_spec(widget: dict) -> tuple:
         encodings["color"] = {"fieldName": color, "displayName": label(color),
                               "scale": {"type": "categorical",
                                         "mappings": [{"value": n, "color": c} for n, c in CHANNEL_COLORS.items()]}}
-        queried.append(field(color))
+        if color != x:
+            queried.append(field(color))
     return queried, False, _spec(kind, encodings, frame)
 
 
