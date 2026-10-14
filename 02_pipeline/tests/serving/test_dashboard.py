@@ -34,9 +34,10 @@ CLOTHES, SHOES = CATEGORY_OF["SKU-001"], CATEGORY_OF["SKU-004"]
 A, B = ALL_CHANNELS[0], ALL_CHANNELS[1]   # 채널 이름: A 자사몰, B 종합 오픈마켓
 
 
-def local_text(text: str, date_range=WIDE, channels=ALL_CHANNELS, categories=ALL_CATEGORIES) -> str:
+def local_text(text: str, date_range=WIDE, channels=ALL_CHANNELS, categories=ALL_CATEGORIES, compare_range=WIDE) -> str:
     """쿼리 문장의 매개변수에 값을 넣는다 (sqlite 실행용)."""
     text = text.replace(":date_range.min", f"'{date_range[0]}'").replace(":date_range.max", f"'{date_range[1]}'")
+    text = text.replace(":compare_range.min", f"'{compare_range[0]}'").replace(":compare_range.max", f"'{compare_range[1]}'")
     # 다중 선택 값은 배열로 전달된다: 로컬에서는 JSON 배열 문자열로 넣고 sqlite에 등록한 array_contains가 읽는다
     text = text.replace(":channels", "'" + json.dumps(list(channels), ensure_ascii=False) + "'")
     return text.replace(":categories", "'" + json.dumps(list(categories), ensure_ascii=False) + "'")
@@ -128,6 +129,8 @@ def compare_rows() -> dict:
 
 
 RANGE = ("2026-10-08", "2026-10-14")
+PREV = ("2026-10-01", "2026-10-07")        # 사용자가 고른 비교 기간: 바로 앞 7일
+LAST_YEAR = ("2025-10-08", "2025-10-14")   # 사용자가 고른 비교 기간: 1년 전 같은 7일
 
 
 class TestSpec(unittest.TestCase):
@@ -299,63 +302,69 @@ class TestWeeks(unittest.TestCase):
 
 
 class TestCompare(unittest.TestCase):
-    """비교 표: 지표마다 한 행(지표, 현재, 직전 기간 대비, 전년 동기 대비). 조회 기간 2026-10-08 ~ 14.
-    직전 기간(10-01~07): 총 5,000, 순 5,000, 고객 2명(U1,U3), 건수 2, 환불 0. 전년 동기(2025-10-08~14): 총 20,000(Y1, U1), 건수 1."""
+    """비교 표: 지표마다 한 행(지표, 조회 기간 값, 비교 기간 값, 증감). 조회 기간 2026-10-08 ~ 14, 비교 기간은 사용자가 고른다.
+    PREV(10-01~07): 총 5,000, 순 5,000, 고객 2명(U1,U3), 건수 2, 환불 0. LAST_YEAR(2025-10-08~14): 총 20,000(Y1, U1), 건수 1."""
 
     @classmethod
     def setUpClass(cls):
         cls.con = g.gold_connection(compare_rows())
 
-    def table(self, name="sales_compare", con=None, date_range=RANGE, **filters):
-        rows = local_rows(con or self.con, DATASETS[name], date_range=date_range, **filters)
-        return {r["metric"]: (r["current_value"], r["vs_prev"], r["vs_yoy"]) for r in rows}
+    def table(self, name="sales_compare", con=None, date_range=RANGE, compare_range=PREV, **filters):
+        rows = local_rows(con or self.con, DATASETS[name], date_range=date_range, compare_range=compare_range, **filters)
+        return {r["metric"]: (r["current_value"], r["compare_value"], r["change"]) for r in rows}
 
     def test_one_row_per_metric_in_card_order(self):
-        rows = local_rows(self.con, DATASETS["sales_compare"], date_range=RANGE)
+        rows = local_rows(self.con, DATASETS["sales_compare"], date_range=RANGE, compare_range=PREV)
         self.assertEqual([spec.LABELS[m] for m in spec.SALES_COMPARE], [r["metric"] for r in rows])
         self.assertEqual(list(range(1, 9)), [r["sort_order"] for r in rows])
 
-    def test_current_values_and_changes(self):
+    def test_against_the_previous_seven_days(self):
         self.assertEqual({
-            "총판매금액": ("10,000원", "▲ 100.0%", "▼ 50.0%"),       # 10,000 vs 5,000 / 20,000
-            "순판매금액": ("9,000원", "▲ 80.0%", "▼ 55.0%"),         # 9,000 vs 5,000 / 20,000
-            "환불금액비율": ("10.0%", "▲ 10.0%p", "▲ 10.0%p"),       # 0.1 vs 0.0: 비율의 차(%p), 비교값이 0이어도 계산된다
-            "결제고객수": ("2명", "0.0%", "▲ 100.0%"),               # 2 vs 2 (방향 기호 없음) / 1
-            "객단가": ("5,000원", "▲ 100.0%", "▼ 75.0%"),            # 5,000 vs 2,500 / 20,000 (기간마다 다시 계산한 값)
-            "상품결제건수": ("3건", "▲ 50.0%", "▲ 200.0%"),          # 3 vs 2 / 1
-            "상품결제단가": ("3,333원", "▲ 33.3%", "▼ 83.3%"),       # 3,333.33 vs 2,500 / 20,000
-            "환불금액": ("1,000원", "-", "-"),                       # 비교 기간 환불이 0이라 증감률을 낼 수 없다
+            "총판매금액": ("10,000원", "5,000원", "▲ 100.0%"),
+            "순판매금액": ("9,000원", "5,000원", "▲ 80.0%"),
+            "환불금액비율": ("10.0%", "0.0%", "▲ 10.0%p"),        # 비율의 차(%p), 비교값이 0이어도 계산된다
+            "결제고객수": ("2명", "2명", "0.0%"),                   # 같으면 방향 기호 없음
+            "객단가": ("5,000원", "2,500원", "▲ 100.0%"),           # 기간마다 다시 계산한 값
+            "상품결제건수": ("3건", "2건", "▲ 50.0%"),
+            "상품결제단가": ("3,333원", "2,500원", "▲ 33.3%"),      # 3,333.33 vs 2,500
+            "환불금액": ("1,000원", "0원", "-"),                    # 비교값이 0이라 증감률을 낼 수 없다
         }, self.table())
+
+    def test_against_the_same_week_last_year(self):
+        table = self.table(compare_range=LAST_YEAR)
+        self.assertEqual(("10,000원", "20,000원", "▼ 50.0%"), table["총판매금액"])
+        self.assertEqual(("9,000원", "20,000원", "▼ 55.0%"), table["순판매금액"])
+        self.assertEqual(("2명", "1명", "▲ 100.0%"), table["결제고객수"])
+        self.assertEqual(("3,333원", "20,000원", "▼ 83.3%"), table["상품결제단가"])
+
+    def test_compare_period_can_have_a_different_length(self):
+        """비교 기간은 조회 기간과 길이가 달라도 된다: 2025-10 한 달(Y1 20,000)."""
+        self.assertEqual(("10,000원", "20,000원", "▼ 50.0%"),
+                         self.table(compare_range=("2025-10-01", "2025-10-31"))["총판매금액"])
 
     def test_empty_comparison_period_says_no_results(self):
         for filters in ({"channels": (B,)}, {"categories": (SHOES,)}):
             table = self.table(**filters)
             with self.subTest(filters=filters):
-                self.assertEqual(("5,000원", "실적이 없습니다.", "실적이 없습니다."), table["총판매금액"])
-                self.assertEqual(("1명", "실적이 없습니다.", "실적이 없습니다."), table["결제고객수"])
-                self.assertEqual({"실적이 없습니다."}, {v for row in table.values() for v in row[1:]})
+                self.assertEqual(("5,000원", "-", "실적이 없습니다."), table["총판매금액"])
+                self.assertEqual(("1명", "0명", "실적이 없습니다."), table["결제고객수"])
+                self.assertEqual({"실적이 없습니다."}, {row[2] for row in table.values()})
 
     def test_customers_are_recounted_inside_each_period_for_the_selection(self):
-        """자사몰만: 현재 고객 1명(U1)이 직전 2명 대비 50% 감소, 총판매금액은 5,000 vs 5,000."""
+        """자사몰만: 현재 고객 1명(U1)이 비교 기간 2명 대비 50% 감소, 총판매금액은 5,000 vs 5,000."""
         table = self.table(channels=(A,))
-        self.assertEqual(("5,000원", "0.0%", "▼ 75.0%"), table["총판매금액"])
-        self.assertEqual(("1명", "▼ 50.0%", "0.0%"), table["결제고객수"])
-        self.assertEqual(("5,000원", "▲ 100.0%", "▼ 75.0%"), table["객단가"])
+        self.assertEqual(("5,000원", "5,000원", "0.0%"), table["총판매금액"])
+        self.assertEqual(("1명", "2명", "▼ 50.0%"), table["결제고객수"])
+        self.assertEqual(("5,000원", "2,500원", "▲ 100.0%"), table["객단가"])
 
     def test_refund_table_attributes_refunds_to_the_original_payment_date(self):
         """C1(10-08 결제)의 환불은 10-20에 일어났지만 조회 기간의 환불이다. 환불금액비율은 sales_metrics 값(1,000/10,000)이다."""
         self.assertEqual({"환불금액": ("1,000원", "-", "-"), "환불수량": ("1개", "-", "-"),
-                          "환불금액비율": ("10.0%", "▲ 10.0%p", "▲ 10.0%p")}, self.table("refund_compare"))
+                          "환불금액비율": ("10.0%", "0.0%", "▲ 10.0%p")}, self.table("refund_compare"))
 
     def test_refund_table_without_sales_in_comparison_period_says_no_results(self):
-        """오픈마켓만: 현재 환불이 없어 "-", 직전·전년 기간에 결제가 없어 "실적이 없습니다."."""
-        self.assertEqual(("-", "실적이 없습니다.", "실적이 없습니다."), self.table("refund_compare", channels=(B,))["환불금액"])
-
-    def test_year_over_year_period_clamps_leap_day(self):
-        """2024-02-29의 전년 동기는 2023-02-28이다."""
-        rows = combine(sale("L1", "2024-02-29T03:00:00.000Z", "U1", 2), sale("L0", "2023-02-28T03:00:00.000Z", "U1", 1))
-        table = self.table(con=g.gold_connection(rows), date_range=("2024-02-29", "2024-02-29"))
-        self.assertEqual(("2,000원", "실적이 없습니다.", "▲ 100.0%"), table["총판매금액"])
+        """오픈마켓만: 현재 환불이 없어 "-", 비교 기간에 결제가 없어 "실적이 없습니다."."""
+        self.assertEqual(("-", "-", "실적이 없습니다."), self.table("refund_compare", channels=(B,))["환불금액"])
 
     def test_empty_current_period_shows_dash(self):
         table = self.table(date_range=("2026-10-09", "2026-10-13"))
@@ -366,6 +375,8 @@ class TestCompare(unittest.TestCase):
         self.assertEqual(2000, one_day["total_sales"])            # C1만 (KST 10-08 00:30)
         none = local_rows(self.con, DATASETS["sales_kpi"], date_range=("2026-10-09", "2026-10-13"))[0]
         self.assertEqual((None, 0), (none["total_sales"], none["item_count"]))
+        edge = self.table(compare_range=("2026-10-07", "2026-10-07"))["총판매금액"]   # P2만 (KST 10-07 23:59)
+        self.assertEqual("1,000원", edge[1])
 
 
 class TestFilters(unittest.TestCase):
@@ -373,12 +384,13 @@ class TestFilters(unittest.TestCase):
     def setUpClass(cls):
         cls.con = g.gold_connection(silver.fixture_rows())
 
-    def test_every_dataset_query_applies_the_filters(self):
+    def test_every_dataset_query_applies_the_selections(self):
+        """모든 지표 데이터셋이 채널·카테고리·조회 기간을 쓰고, 비교 표만 비교 기간을 더 쓴다."""
         for dataset in spec.DATASETS:
             sql = spec.dataset_query(dataset)
+            want = {"date_range", "channels", "categories"} | ({"compare_range"} if dataset.get("compare") else set())
             with self.subTest(dataset=dataset["name"]):
-                self.assertEqual({"date_range", "channels", "categories"},
-                                 {f["param"] for f in spec.FILTERS if spec.uses_parameter(dataset, f["param"])})
+                self.assertEqual(want, {f["param"] for f in spec.FILTERS if spec.uses_parameter(dataset, f["param"])})
                 self.assertEqual(sql.count("WHERE"), sql.count(":channels"))   # 지표를 조회하는 곳마다 같은 WHERE가 걸린다
 
     def test_filter_dimensions_exist_in_both_views(self):
@@ -449,17 +461,24 @@ class TestFilters(unittest.TestCase):
         self.assertEqual({"DEFECT": 1.0}, only_a)
 
 
-def is_filter_page(page: dict) -> bool:
-    return page["pageType"] == "PAGE_TYPE_GLOBAL_FILTERS"
+def is_selector(item: dict) -> bool:
+    return item["widget"].get("spec", {}).get("widgetType", "").startswith("filter-")
+
+
+def selectors(page: dict) -> list:
+    return [i for i in page["layout"] if is_selector(i)]
 
 
 def widgets(dashboard: dict) -> list:
-    """지표 페이지의 데이터 위젯 (전역 필터 페이지와 쿼리 없는 텍스트 위젯 제외)."""
-    return [(page["name"], item) for page in dashboard["pages"] if not is_filter_page(page) for item in page["layout"]
-            if "queries" in item["widget"]]
+    """페이지의 데이터 위젯 (맨 위 선택기와 쿼리 없는 텍스트 위젯 제외)."""
+    return [(page["name"], item) for page in dashboard["pages"] for item in page["layout"]
+            if "queries" in item["widget"] and not is_selector(item)]
 
 
-# plans/05 카드 5-G "최종 시안 기준 구현 명세"의 배치표를 그대로 옮긴 독립 기대값: (종류, 데이터셋.열 또는 섹션 제목, x, y, w, h)
+# plans/05 카드 5-G "최종 시안 기준 구현 명세"의 배치표를 그대로 옮긴 독립 기대값: (종류, 데이터셋.열 또는 섹션 제목, x, y, w, h).
+# y는 시안 기준(선택기 없이 0부터)이고, 실제 위치는 맨 위 선택기 줄(높이 2) 아래로 2만큼 내려간다 (2026-10-14 사용자 결정).
+SELECTOR_ROW = [("filter", "channels", 0, 0, 1, 2), ("filter", "categories", 1, 0, 1, 2),
+                ("filter", "date_range", 2, 0, 2, 2), ("filter", "compare_range", 4, 0, 2, 2)]
 SPEC_LAYOUT = {
     "sales": [
         ("text", "핵심 지표", 0, 0, 6, 1),
@@ -529,35 +548,40 @@ class TestJson(unittest.TestCase):
             with self.subTest(page=page, widget=widget["name"]):
                 self.assertTrue(used and used <= fields, (used, fields))
 
-    def test_global_filter_page_binds_each_filter_to_the_datasets_that_use_it(self):
-        pages = [p for p in DASHBOARD["pages"] if is_filter_page(p)]
-        self.assertEqual(1, len(pages))
-        by_param = {}
-        for item in pages[0]["layout"]:
-            fields = item["widget"]["spec"]["encodings"]["fields"]
-            queries = {q["name"]: q["query"] for q in item["widget"]["queries"]}
-            bound = [f for f in fields if "parameterName" in f]
-            self.assertEqual(1, len({f["parameterName"] for f in bound}))
-            for f in bound:
-                self.assertEqual(f["parameterName"], queries[f["queryName"]]["parameters"][0]["keyword"])
-            by_param[bound[0]["parameterName"]] = ({queries[f["queryName"]]["datasetName"] for f in bound},
-                                                   item["widget"]["spec"]["widgetType"])
-        want = {f["param"]: ({build_dashboard.dataset_id(d["name"]) for d in spec.DATASETS if spec.uses_parameter(d, f["param"])},
-                             {"date_range": "filter-date-range-picker", "multi_select": "filter-multi-select"}[f["kind"]])
-                for f in spec.FILTERS}
-        self.assertEqual(want, by_param)
-        self.assertEqual({"channels", "categories", "date_range"}, set(by_param))
+    def test_no_global_filter_panel(self):
+        self.assertEqual(["PAGE_TYPE_CANVAS"] * 2, [p["pageType"] for p in DASHBOARD["pages"]])
+
+    def test_each_page_has_four_selectors_bound_to_its_own_datasets(self):
+        kinds = {"date_range": "filter-date-range-picker", "multi_select": "filter-multi-select"}
+        for page, page_spec in zip(DASHBOARD["pages"], spec.PAGES):
+            used = {w["dataset"] for w in page_spec["widgets"] if w.get("dataset")}
+            by_param = {}
+            for item in selectors(page):
+                fields = item["widget"]["spec"]["encodings"]["fields"]
+                queries = {q["name"]: q["query"] for q in item["widget"]["queries"]}
+                bound = [f for f in fields if "parameterName" in f]
+                self.assertEqual(1, len({f["parameterName"] for f in bound}))
+                for f in bound:
+                    self.assertEqual(f["parameterName"], queries[f["queryName"]]["parameters"][0]["keyword"])
+                by_param[bound[0]["parameterName"]] = ({queries[f["queryName"]]["datasetName"] for f in bound},
+                                                       item["widget"]["spec"]["widgetType"])
+            want = {f["param"]: ({build_dashboard.dataset_id(n) for n in used if spec.uses_parameter(DATASETS[n], f["param"])},
+                                 kinds[f["kind"]]) for f in spec.FILTERS}
+            with self.subTest(page=page["displayName"]):
+                self.assertEqual(want, by_param)
+                self.assertEqual({"channels", "categories", "date_range", "compare_range"}, set(by_param))
+                self.assertTrue(by_param["compare_range"][0])   # 비교 표 데이터셋에 묶여 있다
 
     def test_option_datasets_offer_the_dimension_values(self):
-        items = [i for i in next(p for p in DASHBOARD["pages"] if is_filter_page(p))["layout"]
-                 if i["widget"]["spec"]["widgetType"] == "filter-multi-select"]
-        self.assertEqual({"channel_name", "category"},
-                         {f["fieldName"] for i in items for f in i["widget"]["spec"]["encodings"]["fields"] if "fieldName" in f})
-        for item in items:
-            options = [f for f in item["widget"]["spec"]["encodings"]["fields"] if "fieldName" in f][0]
-            query = next(q for q in item["widget"]["queries"] if q["name"] == options["queryName"])["query"]
-            flt = next(f for f in spec.FILTERS if f["dimension"] == options["fieldName"])
-            self.assertEqual(build_dashboard.dataset_id(flt["options"]), query["datasetName"])
+        for page in DASHBOARD["pages"]:
+            items = [i for i in selectors(page) if i["widget"]["spec"]["widgetType"] == "filter-multi-select"]
+            self.assertEqual({"channel_name", "category"},
+                             {f["fieldName"] for i in items for f in i["widget"]["spec"]["encodings"]["fields"] if "fieldName" in f})
+            for item in items:
+                options = [f for f in item["widget"]["spec"]["encodings"]["fields"] if "fieldName" in f][0]
+                query = next(q for q in item["widget"]["queries"] if q["name"] == options["queryName"])["query"]
+                flt = next(f for f in spec.FILTERS if f["dimension"] == options["fieldName"])
+                self.assertEqual(build_dashboard.dataset_id(flt["options"]), query["datasetName"])
 
     def test_datasets_declare_only_the_parameters_they_use_with_defaults(self):
         options = {o["name"] for o in spec.OPTION_DATASETS}
@@ -569,17 +593,12 @@ class TestJson(unittest.TestCase):
             used = {f["param"] for f in spec.FILTERS if spec.uses_parameter(DATASETS[dataset["displayName"]], f["param"])}
             with self.subTest(dataset=dataset["displayName"]):
                 self.assertEqual(used, set(by_key))
-                self.assertEqual("RANGE", by_key["date_range"]["complexType"])
-                self.assertEqual(("now-30d/d", "now/d"), (by_key["date_range"]["defaultSelection"]["range"]["min"]["value"],
-                                                          by_key["date_range"]["defaultSelection"]["range"]["max"]["value"]))
-                if "channels" in by_key:
-                    self.assertEqual(spec.CHANNEL_NAMES, [v["value"] for v in by_key["channels"]["defaultSelection"]["values"]["values"]])
-                    self.assertEqual(spec.CATEGORIES, [v["value"] for v in by_key["categories"]["defaultSelection"]["values"]["values"]])
-
-    def test_global_filter_page_has_one_widget_per_filter(self):
-        """위젯 위치(격자·겹침)는 아래 테스트가 필터 페이지를 포함한 모든 페이지에 검사한다."""
-        page = next(p for p in DASHBOARD["pages"] if is_filter_page(p))
-        self.assertEqual(len(spec.FILTERS), len(page["layout"]))
+                for key, want in (("date_range", ("now-30d/d", "now/d")), ("compare_range", ("now-61d/d", "now-31d/d"))):
+                    if key in by_key:
+                        rng = by_key[key]["defaultSelection"]["range"]
+                        self.assertEqual(("RANGE", want), (by_key[key]["complexType"], (rng["min"]["value"], rng["max"]["value"])))
+                self.assertEqual(spec.CHANNEL_NAMES, [v["value"] for v in by_key["channels"]["defaultSelection"]["values"]["values"]])
+                self.assertEqual(spec.CATEGORIES, [v["value"] for v in by_key["categories"]["defaultSelection"]["values"]["values"]])
 
     def test_non_additive_measures_are_plotted_only_one_row_per_mark(self):
         """비가산 지표(비율 등)는 막대·선의 SUM이 행들을 더하지 않도록 데이터셋이 막대·선 하나당 한 행을 낼 때만 쓴다."""
@@ -622,7 +641,7 @@ class TestJson(unittest.TestCase):
         self.assertIn("▲", text)
         self.assertIn("▼", text)
         for _, item in widgets(DASHBOARD):
-            if "vs_prev" in json.dumps(item["widget"]["queries"]):
+            if "compare_value" in json.dumps(item["widget"]["queries"]):
                 self.assertNotIn("color", json.dumps(item["widget"]["spec"]))
 
     def test_layout_fits_grid_without_overlap(self):
@@ -653,7 +672,7 @@ class TestJson(unittest.TestCase):
             tables = [w for w in next(p for p in spec.PAGES if p["name"] == page)["widgets"] if w.get("dataset") == name]
             with self.subTest(page=page):
                 self.assertEqual(1, len(tables))
-                self.assertEqual(["metric", "current_value", "vs_prev", "vs_yoy"], tables[0]["columns"])
+                self.assertEqual(["metric", "current_value", "compare_value", "change"], tables[0]["columns"])
 
     def test_cards_do_not_depend_on_the_comparison_query(self):
         """비교 표 쿼리(CTE)가 실패해도 숫자 카드는 뜬다: 카드 데이터셋은 CTE가 없는 단순 조회다."""
@@ -667,20 +686,21 @@ class TestJson(unittest.TestCase):
         for page in spec.PAGES:
             got = []
             for w in page["widgets"]:
-                if w["kind"] == "text":
+                if w["kind"] == "filter":
+                    key = w["param"]
+                elif w["kind"] == "text":
                     key = w["title"]
                 elif w["kind"] == "counter":
                     key = f"{w['dataset']}.{w['value']}"
                 else:
                     key = w["dataset"]
                 got.append((w["kind"], key, w["x"], w["y"], w["width"], w["height"]))
+            want = SELECTOR_ROW + [(k, key, x, y + 2, w, h) for k, key, x, y, w, h in SPEC_LAYOUT[page["name"]]]
             with self.subTest(page=page["name"]):
-                self.assertEqual(SPEC_LAYOUT[page["name"]], got)
+                self.assertEqual(want, got)
 
     def test_section_titles_are_text_widgets_without_queries(self):
         for page in DASHBOARD["pages"]:
-            if is_filter_page(page):
-                continue
             texts = [i["widget"] for i in page["layout"] if "multilineTextboxSpec" in i["widget"]]
             with self.subTest(page=page["displayName"]):
                 self.assertEqual(4, len(texts))

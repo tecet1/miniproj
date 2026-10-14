@@ -1,19 +1,19 @@
 """대시보드에 무엇을 보여줄지 정의한다: 데이터셋(조회)과 위젯(KPI·차트·표). Lakeview JSON 모양은 build_dashboard.py가 만든다. (plans/05 카드 5-F·5-G)
 
-[필터] 채널·카테고리(다중 선택)와 조회 기간(결제일 범위)을 모든 페이지 맨 위(전역 필터)에 둔다. 데이터셋 쿼리의 매개변수
-  (:channels, :categories, :date_range.min/.max)이며 Metric View 조회의 WHERE에 들어간다. 이미 집계된 행을 화면에서 다시 거르면
-  결제고객수·객단가·비율이 틀리므로 쓰지 않는다. 환불 지표의 기간도 원결제일 기준이다 (event_spec 6.3).
-[비교 기간] 쿼리 안에서 조회 기간으로 계산한다 (Databricks 매개변수는 다른 매개변수로 만들 수 없다).
-  직전 기간 = 바로 앞의 같은 길이 구간, 전년 동기 = 1년 전 같은 구간. 증감은 기간마다 Metric View를 다시 조회해 비교한다.
+[선택기] 채널·카테고리(다중 선택), 조회 기간·비교 기간(결제일 범위)을 각 페이지 맨 위 캔버스에 둔다(전역 필터 패널은 쓰지 않는다).
+  데이터셋 쿼리의 매개변수(:channels, :categories, :date_range.min/.max, :compare_range.min/.max)이며 Metric View 조회의 WHERE에
+  들어간다. 이미 집계된 행을 화면에서 다시 거르면 결제고객수·객단가·비율이 틀리므로 쓰지 않는다. 환불 지표의 기간도 원결제일 기준이다 (event_spec 6.3).
+[비교 기간] 사용자가 날짜 범위로 직접 고른다(2026-10-14 사용자 결정, 자동 계산 대체). 비교 표는 조회 기간과 비교 기간을 지표마다 비교한다.
 [데이터셋] 두 가지다.
   일반   이름, Metric View, 분석 기준(dims), 지표(measures), 정렬(order), 구성비 열(share_of). 쿼리는 MEASURE()로 조회한다.
          KPI 숫자 카드도 일반 데이터셋(dims 없음)이다. 카드가 비교 쿼리에 의존하지 않게 해서, 비교 쿼리가 실패해도 카드는 뜬다.
   비교   "compare": {지표: 표시 방식}. 지표마다 한 행: 지표 이름, 현재 값 문장("12,345원"), 직전 기간 대비, 전년 동기 대비("▲ 12.3%").
-         비교 기간에 상품결제건수가 0이면 "실적이 없습니다.", 비교할 수 없으면(비교값 0·없음) "-". 환불금액비율은 %p(비율의 차)다.
+         열: 지표, 조회 기간 값, 비교 기간 값, 증감. 비교 기간에 상품결제건수가 0이면 증감은 "실적이 없습니다.",
+         비교할 수 없으면(비교값 0·없음) "-". 환불금액비율의 증감은 %p(비율의 차)다.
 [위젯] kind = counter(숫자 하나) | bar(막대, horizontal이면 가로) | line(선) | table(표) | text(섹션 제목, 마크다운). 위치는 6칸 격자 기준이다.
   KPI 카드 하나는 counter 위젯 하나다. 증감은 카드에 붙이지 않고 비교 표 하나에 모은다 (Lakeview 위젯은 한 칸에 값 하나만 담는다).
   배치·문구의 기준은 plans/05 카드 5-G "최종 시안 기준 구현 명세"(Claude Design 시안)다.
-[로컬 검증] 쿼리가 쓰는 date_sub·datediff·add_months·weekday·format_number는 Spark 함수다. 로컬 테스트는 같은 이름의
+[로컬 검증] 쿼리가 쓰는 weekday·date_sub(결제주)·format_number·array_contains는 Spark 함수다. 로컬 테스트는 같은 이름의
   함수를 sqlite에 등록해 같은 문장을 실행한다 (등록한 함수의 동작이 Spark와 같은지는 Databricks에서만 확인된다).
 """
 
@@ -23,17 +23,19 @@ GOLD = "commerce_poc.gold"
 # 필터 선택지와 기본값. 값은 Dimension 테이블과 같아야 한다 (테스트가 대조한다).
 CHANNEL_NAMES = ["자사몰", "종합 오픈마켓", "스포츠 전문몰"]
 CATEGORIES = ["가방", "신발", "액세서리", "의류", "캠핑·등산 장비"]
-DEFAULT_DATE_RANGE = ("now-30d/d", "now/d")   # Lakeview 상대 날짜 표현: 30일 전 ~ 오늘
+DEFAULT_DATE_RANGE = ("now-30d/d", "now/d")   # Lakeview 상대 날짜 표현: 30일 전 ~ 오늘 (31일)
+DEFAULT_COMPARE_RANGE = ("now-61d/d", "now-31d/d")   # 기본 비교 기간: 바로 앞의 같은 길이 (사용자가 바꾼다)
 
 # 채널 색은 모든 차트에서 고정한다 (색약 시뮬레이션 검증을 통과한 값; 청록은 대비 경고가 있어 범례·직접 라벨이 필요하다).
 CHANNEL_COLORS = {"자사몰": "#2a78d6", "종합 오픈마켓": "#eb6834", "스포츠 전문몰": "#1baf7a"}
 NEUTRAL_COLOR = "#5b6573"   # 채널이 아닌 단일 계열
 
-# 필터: param = 매개변수 이름, dimension = Metric View 분석 기준. options = 선택지 데이터셋(날짜 범위는 없다).
+# 선택기: param = 매개변수 이름, dimension = Metric View 분석 기준. options = 선택지 데이터셋(날짜 범위는 없다).
 FILTERS = [
     {"param": "channels", "kind": "multi_select", "title": "채널", "dimension": "channel_name", "options": "channel_options"},
     {"param": "categories", "kind": "multi_select", "title": "카테고리", "dimension": "category", "options": "category_options"},
     {"param": "date_range", "kind": "date_range", "title": "조회 기간 (결제일)", "dimension": "payment_date"},
+    {"param": "compare_range", "kind": "date_range", "title": "비교 기간 (결제일)", "dimension": "payment_date"},
 ]
 OPTION_DATASETS = [
     {"name": "channel_options", "query": f"SELECT channel_name FROM {GOLD}.dim_channel ORDER BY channel_name",
@@ -49,8 +51,8 @@ LABELS = {
     "average_order_value": "객단가", "refund_quantity": "환불수량", "refund_amount_share": "환불금액 비중",
     "net_sales_share": "순판매금액 비중", "total_sales_share": "총판매금액 비중", "payment_week": "결제주(월요일)",
     "channel_name": "채널", "method_name": "결제수단", "category": "카테고리", "refund_reason": "환불 사유",
-    "refund_type": "환불 유형", "metric": "지표", "current_value": "현재", "vs_prev": "직전 기간 대비",
-    "vs_yoy": "전년 동기 대비",
+    "refund_type": "환불 유형", "metric": "지표", "current_value": "조회 기간", "compare_value": "비교 기간",
+    "change": "증감",
 }
 
 SALES_ALL = ["total_sales", "net_sales", "refund_ratio", "paying_customers", "average_order_value", "item_count",
@@ -99,9 +101,22 @@ DATASETS = [
 ]
 
 # 시안의 문구 (제목 아래 작은 글씨)
-NOTE_COMPARE = "비교 기간(자동): 직전 같은 길이 · 전년 동기"
+NOTE_COMPARE = "조회 기간과 비교 기간은 맨 위 선택기에서 고릅니다."
 NOTE_LOWER_BETTER = "낮을수록 좋은 지표입니다."
-COMPARE_COLUMNS = ["metric", "current_value", "vs_prev", "vs_yoy"]
+COMPARE_COLUMNS = ["metric", "current_value", "compare_value", "change"]
+SELECTOR_ROWS = 2   # 맨 위 선택기 줄의 높이. 그 아래 위젯은 이만큼 내려간다
+
+
+def _selectors() -> list:
+    """페이지 맨 위 선택기 4개: 채널(폭 1), 카테고리(폭 1), 조회 기간(폭 2), 비교 기간(폭 2)."""
+    places = {"channels": (0, 1), "categories": (1, 1), "date_range": (2, 2), "compare_range": (4, 2)}
+    return [{"kind": "filter", "param": f["param"], "title": f["title"], "x": places[f["param"]][0], "y": 0,
+             "width": places[f["param"]][1], "height": SELECTOR_ROWS} for f in FILTERS]
+
+
+def _below_selectors(widgets: list) -> list:
+    """시안 배치(y는 선택기 없이 0부터)를 선택기 줄 아래로 내린다."""
+    return [{**w, "y": w["y"] + SELECTOR_ROWS} for w in widgets]
 
 
 def _card(dataset: str, measure: str, x: int, y: int, width: int, height: int, note: str = "") -> dict:
@@ -119,7 +134,7 @@ def _section(title: str, y: int, note: str = "") -> dict:
 # 위젯: dataset, kind, title, 보여줄 열(counter는 value 하나, bar·line은 x_field와 y_fields, table은 columns), 위치.
 # 선택 항목: note(제목 아래 작은 설명), color_field(계열 열, 채널이면 고정 색), horizontal(가로 막대). text는 lines만 갖는다.
 PAGES = [
-    {"name": "sales", "title": "판매", "widgets": [
+    {"name": "sales", "title": "판매", "widgets": [*_selectors(), *_below_selectors([
         _section("핵심 지표", 0, NOTE_COMPARE),
         _card("sales_kpi", "total_sales", 0, 1, 2, 3, "조회 기간 합계"),
         _card("sales_kpi", "net_sales", 2, 1, 2, 3, "총판매금액 − 환불금액"),
@@ -130,7 +145,7 @@ PAGES = [
         _card("sales_kpi", "unit_price_per_item", 3, 4, 1, 2),
         _card("sales_kpi", "refund_amount", 4, 4, 1, 2),
         _card("refund_kpi", "refund_quantity", 5, 4, 1, 2),   # sales_metrics에 환불수량이 없다. 같은 필터·원결제일 귀속
-        {"dataset": "sales_compare", "kind": "table", "title": "직전 기간 · 전년 동기 대비",
+        {"dataset": "sales_compare", "kind": "table", "title": "조회 기간 · 비교 기간 대비",
          "note": "증감은 기호와 숫자만 씁니다. 비교 기간에 결제가 없으면 \"실적이 없습니다.\"",
          "columns": COMPARE_COLUMNS, "x": 0, "y": 6, "width": 6, "height": 6},
         _section("추이", 12),
@@ -154,13 +169,13 @@ PAGES = [
          "columns": ["channel_name", "total_sales", "net_sales", "refund_ratio", "paying_customers",
                      "average_order_value"],
          "x": 0, "y": 33, "width": 6, "height": 5},
-    ]},
-    {"name": "refund", "title": "환불", "widgets": [
+    ])]},
+    {"name": "refund", "title": "환불", "widgets": [*_selectors(), *_below_selectors([
         _section("핵심 지표", 0, NOTE_COMPARE),
         _card("refund_kpi", "refund_amount", 0, 1, 2, 3, "원결제일이 조회 기간에 든 환불"),
         _card("refund_kpi", "refund_quantity", 2, 1, 2, 3, "환불된 상품 수량 합계"),
         _card("sales_kpi", "refund_ratio", 4, 1, 2, 3, NOTE_LOWER_BETTER),
-        {"dataset": "refund_compare", "kind": "table", "title": "직전 기간 · 전년 동기 대비",
+        {"dataset": "refund_compare", "kind": "table", "title": "조회 기간 · 비교 기간 대비",
          "columns": COMPARE_COLUMNS, "x": 0, "y": 4, "width": 6, "height": 3},
         _section("구성", 7),
         {"dataset": "refund_by_reason", "kind": "bar", "title": "사유별 환불금액 비중 · 큰 순", "x_field": "refund_reason",
@@ -178,16 +193,15 @@ PAGES = [
         {"dataset": "refund_by_reason", "kind": "table", "title": "사유별 환불",
          "columns": ["refund_reason", "refund_amount", "refund_quantity", "refund_amount_share"],
          "x": 0, "y": 22, "width": 6, "height": 4},
-    ]},
+    ])]},
 ]
 
 # ── 쿼리 만들기 ──────────────────────────────────────────────────────────────────
 MIN, MAX = ":date_range.min", ":date_range.max"
-# 기간 이름 -> (시작 식, 끝 식). 모든 데이터셋이 같은 식을 쓴다.
+# 기간 이름 -> (시작, 끝). 조회 기간과 사용자가 고른 비교 기간.
 PERIODS = {
     "cur": (MIN, MAX),
-    "prev": (f"date_sub({MIN}, datediff({MAX}, {MIN}) + 1)", f"date_sub({MIN}, 1)"),
-    "yoy": (f"add_months({MIN}, -12)", f"add_months({MAX}, -12)"),
+    "cmp": (":compare_range.min", ":compare_range.max"),
 }
 
 
@@ -200,7 +214,7 @@ def dataset_columns(dataset: dict) -> list:
 
 
 def where_clause(period: str = "cur") -> str:
-    """필터를 거는 WHERE 조건 (매개변수 표기). period가 prev·yoy면 기간만 비교 기간으로 바뀌고 채널·카테고리는 같다."""
+    """선택을 거는 WHERE 조건 (매개변수 표기). period가 cmp면 기간만 비교 기간으로 바뀌고 채널·카테고리는 같다."""
     low, high = PERIODS[period]
     # 다중 선택 매개변수는 배열로 전달된다. `IN (:channels)`는 쓸 수 없고 array_contains(배열, 열)로 거른다 (Databricks 문서).
     return (f"payment_date BETWEEN {low} AND {high} AND array_contains(:channels, channel_name) "
@@ -242,7 +256,7 @@ def value_text(column: str, unit: str) -> str:
 
 
 def compare_query(dataset: dict, select) -> str:
-    """비교 표 쿼리: 기간(현재·직전·전년)과 뷰마다 지표를 조회하는 CTE를 만들고, 지표마다 한 행으로 펼친다.
+    """비교 표 쿼리: 기간(조회·비교)과 뷰마다 지표를 조회하는 CTE를 만들고, 지표마다 한 행으로 펼친다.
 
     select(view, measures, where)는 지표 조회 문장을 돌려주는 함수다. Databricks는 MEASURE() 조회를, 로컬 테스트는 같은 정의의 일반 SQL을 넘긴다.
     상품결제건수(sales_metrics)는 비교 기간의 실적 유무 판단에 항상 함께 조회한다."""
@@ -258,10 +272,10 @@ def compare_query(dataset: dict, select) -> str:
     for order, (m, shape) in enumerate(dataset["compare"].items(), start=1):
         cur = f"cur_{shape['view']}.{m}"
 
-        def change(period):
-            return delta_text(cur, f"{period}_{shape['view']}.{m}", f"{period}_sales_metrics.item_count", shape["points"])
+        cmp = f"cmp_{shape['view']}.{m}"
+        change = delta_text(cur, cmp, "cmp_sales_metrics.item_count", shape["points"])
         rows.append(f"SELECT {order} AS sort_order, '{LABELS[m]}' AS metric, {value_text(cur, shape['unit'])} AS current_value, "
-                    f"{change('prev')} AS vs_prev, {change('yoy')} AS vs_yoy FROM {tables}")
+                    f"{value_text(cmp, shape['unit'])} AS compare_value, {change} AS change FROM {tables}")
     return f"WITH {', '.join(ctes)} " + " UNION ALL ".join(rows) + " ORDER BY sort_order"
 
 
