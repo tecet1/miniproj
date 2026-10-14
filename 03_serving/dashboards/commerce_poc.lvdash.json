@@ -1012,6 +1012,23 @@
         {
           "widget": {
             "name": "c06a412b",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### 핵심 지표",
+                "비교 기간(자동): 직전 같은 길이 · 전년 동기"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "d539a5bf",
             "queries": [
               {
                 "name": "main_query",
@@ -1038,20 +1055,22 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "총판매금액"
+                "title": "총판매금액",
+                "showDescription": true,
+                "description": "조회 기간 합계"
               }
             }
           },
           "position": {
             "x": 0,
-            "y": 0,
+            "y": 1,
             "width": 2,
             "height": 3
           }
         },
         {
           "widget": {
-            "name": "d539a5bf",
+            "name": "7c4a3157",
             "queries": [
               {
                 "name": "main_query",
@@ -1078,20 +1097,22 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "순판매금액"
+                "title": "순판매금액",
+                "showDescription": true,
+                "description": "총판매금액 − 환불금액"
               }
             }
           },
           "position": {
             "x": 2,
-            "y": 0,
+            "y": 1,
             "width": 2,
             "height": 3
           }
         },
         {
           "widget": {
-            "name": "7c4a3157",
+            "name": "c1b5cccd",
             "queries": [
               {
                 "name": "main_query",
@@ -1126,14 +1147,14 @@
           },
           "position": {
             "x": 4,
-            "y": 0,
+            "y": 1,
             "width": 2,
             "height": 3
           }
         },
         {
           "widget": {
-            "name": "c1b5cccd",
+            "name": "837fda83",
             "queries": [
               {
                 "name": "main_query",
@@ -1166,14 +1187,14 @@
           },
           "position": {
             "x": 0,
-            "y": 3,
+            "y": 4,
             "width": 1,
             "height": 2
           }
         },
         {
           "widget": {
-            "name": "837fda83",
+            "name": "c340e581",
             "queries": [
               {
                 "name": "main_query",
@@ -1206,14 +1227,14 @@
           },
           "position": {
             "x": 1,
-            "y": 3,
+            "y": 4,
             "width": 1,
             "height": 2
           }
         },
         {
           "widget": {
-            "name": "c340e581",
+            "name": "49b06640",
             "queries": [
               {
                 "name": "main_query",
@@ -1246,14 +1267,14 @@
           },
           "position": {
             "x": 2,
-            "y": 3,
+            "y": 4,
             "width": 1,
             "height": 2
           }
         },
         {
           "widget": {
-            "name": "49b06640",
+            "name": "9d1b8527",
             "queries": [
               {
                 "name": "main_query",
@@ -1286,14 +1307,14 @@
           },
           "position": {
             "x": 3,
-            "y": 3,
+            "y": 4,
             "width": 1,
             "height": 2
           }
         },
         {
           "widget": {
-            "name": "9d1b8527",
+            "name": "2a755475",
             "queries": [
               {
                 "name": "main_query",
@@ -1326,14 +1347,54 @@
           },
           "position": {
             "x": 4,
-            "y": 3,
-            "width": 2,
+            "y": 4,
+            "width": 1,
             "height": 2
           }
         },
         {
           "widget": {
-            "name": "2a755475",
+            "name": "2ae0f148",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "68e4e686",
+                  "fields": [
+                    {
+                      "name": "refund_quantity",
+                      "expression": "`refund_quantity`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "refund_quantity",
+                  "displayName": "환불수량"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "환불수량"
+              }
+            }
+          },
+          "position": {
+            "x": 5,
+            "y": 4,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "51fc2b1a",
             "queries": [
               {
                 "name": "main_query",
@@ -1388,20 +1449,36 @@
                 "showTitle": true,
                 "title": "직전 기간 · 전년 동기 대비",
                 "showDescription": true,
-                "description": "비교 기간(자동): 직전 같은 길이 · 전년 동기"
+                "description": "증감은 기호와 숫자만 씁니다. 비교 기간에 결제가 없으면 \"실적이 없습니다.\""
               }
             }
           },
           "position": {
             "x": 0,
-            "y": 5,
+            "y": 6,
             "width": 6,
-            "height": 5
+            "height": 6
           }
         },
         {
           "widget": {
-            "name": "2ae0f148",
+            "name": "1918fce9",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### 추이"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 12,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "91247ac8",
             "queries": [
               {
                 "name": "main_query",
@@ -1467,7 +1544,7 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "채널별 총판매금액 추이 (주별)",
+                "title": "채널별 총판매금액 추이 · 주별",
                 "showDescription": true,
                 "description": "첫 주와 마지막 주는 부분 기간일 수 있습니다."
               }
@@ -1475,14 +1552,14 @@
           },
           "position": {
             "x": 0,
-            "y": 10,
+            "y": 13,
             "width": 6,
             "height": 6
           }
         },
         {
           "widget": {
-            "name": "51fc2b1a",
+            "name": "058e2f81",
             "queries": [
               {
                 "name": "main_query",
@@ -1547,20 +1624,20 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "채널별 순판매금액 비중 (큰 순)"
+                "title": "채널별 순판매금액 비중 · 큰 순"
               }
             }
           },
           "position": {
             "x": 0,
-            "y": 16,
+            "y": 19,
             "width": 3,
             "height": 6
           }
         },
         {
           "widget": {
-            "name": "1918fce9",
+            "name": "b4bb8a6a",
             "queries": [
               {
                 "name": "main_query",
@@ -1601,22 +1678,38 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "환불금액비율 추이 (주별, 채널 합계)",
+                "title": "환불금액비율 추이 · 주별, 채널 합계",
                 "showDescription": true,
-                "description": "주별 값은 그 주의 분자·분모로 다시 계산한 값입니다."
+                "description": "주마다 그 주의 분자·분모로 다시 계산한 값입니다."
               }
             }
           },
           "position": {
             "x": 3,
-            "y": 16,
+            "y": 19,
             "width": 3,
             "height": 6
           }
         },
         {
           "widget": {
-            "name": "91247ac8",
+            "name": "e9df8e9a",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### 구성"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 25,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "8c404b63",
             "queries": [
               {
                 "name": "main_query",
@@ -1660,20 +1753,20 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "결제수단별 총판매금액 (큰 순)"
+                "title": "결제수단별 총판매금액 · 큰 순"
               }
             }
           },
           "position": {
             "x": 0,
-            "y": 22,
+            "y": 26,
             "width": 3,
             "height": 6
           }
         },
         {
           "widget": {
-            "name": "058e2f81",
+            "name": "a481814f",
             "queries": [
               {
                 "name": "main_query",
@@ -1717,20 +1810,36 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "카테고리별 총판매금액 (큰 순)"
+                "title": "카테고리별 총판매금액 · 큰 순"
               }
             }
           },
           "position": {
             "x": 3,
-            "y": 22,
+            "y": 26,
             "width": 3,
             "height": 6
           }
         },
         {
           "widget": {
-            "name": "b4bb8a6a",
+            "name": "15b467c4",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### 상세"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 32,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "8d83ce5e",
             "queries": [
               {
                 "name": "main_query",
@@ -1805,9 +1914,9 @@
           },
           "position": {
             "x": 0,
-            "y": 28,
+            "y": 33,
             "width": 6,
-            "height": 4
+            "height": 5
           }
         }
       ]
@@ -1820,6 +1929,23 @@
         {
           "widget": {
             "name": "3d46d3d8",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### 핵심 지표",
+                "비교 기간(자동): 직전 같은 길이 · 전년 동기"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "8c9dd553",
             "queries": [
               {
                 "name": "main_query",
@@ -1848,20 +1974,20 @@
                 "showTitle": true,
                 "title": "환불금액",
                 "showDescription": true,
-                "description": "환불은 원결제일 기준으로 귀속합니다."
+                "description": "원결제일이 조회 기간에 든 환불"
               }
             }
           },
           "position": {
             "x": 0,
-            "y": 0,
+            "y": 1,
             "width": 2,
             "height": 3
           }
         },
         {
           "widget": {
-            "name": "8c9dd553",
+            "name": "3e937f01",
             "queries": [
               {
                 "name": "main_query",
@@ -1888,20 +2014,22 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "환불수량"
+                "title": "환불수량",
+                "showDescription": true,
+                "description": "환불된 상품 수량 합계"
               }
             }
           },
           "position": {
             "x": 2,
-            "y": 0,
+            "y": 1,
             "width": 2,
             "height": 3
           }
         },
         {
           "widget": {
-            "name": "3e937f01",
+            "name": "2b251fc5",
             "queries": [
               {
                 "name": "main_query",
@@ -1936,14 +2064,14 @@
           },
           "position": {
             "x": 4,
-            "y": 0,
+            "y": 1,
             "width": 2,
             "height": 3
           }
         },
         {
           "widget": {
-            "name": "2b251fc5",
+            "name": "f9c0332e",
             "queries": [
               {
                 "name": "main_query",
@@ -1996,22 +2124,36 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "직전 기간 · 전년 동기 대비",
-                "showDescription": true,
-                "description": "비교 기간(자동): 직전 같은 길이 · 전년 동기"
+                "title": "직전 기간 · 전년 동기 대비"
               }
             }
           },
           "position": {
             "x": 0,
-            "y": 3,
+            "y": 4,
             "width": 6,
             "height": 3
           }
         },
         {
           "widget": {
-            "name": "f9c0332e",
+            "name": "bb7b3fd8",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### 구성"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 7,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "aee347b3",
             "queries": [
               {
                 "name": "main_query",
@@ -2055,7 +2197,7 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "사유별 환불금액 (큰 순 · 비중)",
+                "title": "사유별 환불금액 비중 · 큰 순",
                 "showDescription": true,
                 "description": "금액·수량은 아래 표에서 봅니다."
               }
@@ -2063,14 +2205,14 @@
           },
           "position": {
             "x": 0,
-            "y": 6,
+            "y": 8,
             "width": 3,
             "height": 6
           }
         },
         {
           "widget": {
-            "name": "bb7b3fd8",
+            "name": "088b18ac",
             "queries": [
               {
                 "name": "main_query",
@@ -2135,22 +2277,38 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "채널별 환불금액비율 (큰 순)",
+                "title": "채널별 환불금액비율 · 큰 순",
                 "showDescription": true,
-                "description": "금액이 아니라 비율로 비교해야 채널 규모 차이가 가려지지 않습니다."
+                "description": "비율로 비교해야 채널 규모 차이가 가려지지 않습니다."
               }
             }
           },
           "position": {
             "x": 3,
-            "y": 6,
+            "y": 8,
             "width": 3,
             "height": 6
           }
         },
         {
           "widget": {
-            "name": "aee347b3",
+            "name": "772dcb5c",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### 추이"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 14,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "351df766",
             "queries": [
               {
                 "name": "main_query",
@@ -2191,22 +2349,38 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "결제일별 환불금액 추이 (원결제일 귀속 · 주별)",
+                "title": "결제일별 환불금액 추이 · 원결제일 귀속, 주별",
                 "showDescription": true,
-                "description": "최근 주는 아직 환불이 접수 중일 수 있어 값이 낮게 보일 수 있습니다."
+                "description": "최근 주는 아직 환불이 접수 중일 수 있어 낮게 보일 수 있습니다."
               }
             }
           },
           "position": {
             "x": 0,
-            "y": 12,
+            "y": 15,
             "width": 6,
             "height": 6
           }
         },
         {
           "widget": {
-            "name": "088b18ac",
+            "name": "934d7753",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### 상세"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 21,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "c42d95b2",
             "queries": [
               {
                 "name": "main_query",
@@ -2265,9 +2439,9 @@
           },
           "position": {
             "x": 0,
-            "y": 18,
+            "y": 22,
             "width": 6,
-            "height": 5
+            "height": 4
           }
         }
       ]

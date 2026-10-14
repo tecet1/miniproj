@@ -3,7 +3,7 @@
   build_dashboard()   정의 -> 대시보드 dict (datasets, pages). 판매·환불 페이지와 전역 필터 페이지(채널·카테고리·조회 기간)를 담는다
   write_dashboard()   dict -> 파일. 기본 위치는 이 폴더의 commerce_poc.lvdash.json
 실행: python 03_serving/dashboards/build_dashboard.py  (파일을 다시 만든다)
-[미검증] 선 차트(line)·가로 막대·채널 색 고정(mappings)·정렬(sort) spec은 Databricks에서 열어 확인하지 못했다. 필터 버전을 열었을 때 끊긴다는
+[미검증] 선 차트(line)·가로 막대·채널 색 고정(mappings)·정렬(sort)·텍스트 위젯(multilineTextboxSpec)·위젯 설명(description) spec은 Databricks에서 열어 확인하지 못했다. 필터 버전을 열었을 때 끊긴다는
 이전 사용자 보고가 있어, 이 파일이 열리지 않으면 dashboard_spec.py의 데이터셋 쿼리와 화면 구성 가이드(화면_구성_가이드.md)로 위젯을 직접 만든다.
 쿼리와 열 이름의 일치, 위젯 위치 겹침 여부는 로컬 테스트로 확인한다.
 """
@@ -128,6 +128,11 @@ def _spec(kind: str, encodings: dict, frame: dict) -> dict:
 
 
 def layout_item(page: str, index: int, widget: dict) -> dict:
+    position = {key: widget[key] for key in ("x", "y", "width", "height")}
+    if widget["kind"] == "text":   # 섹션 제목: 쿼리 없는 마크다운 텍스트 위젯
+        return {"widget": {"name": short_id(f"widget-{page}-{index}"),
+                           "multilineTextboxSpec": {"lines": widget["lines"]}},
+                "position": position}
     fields, disaggregated, spec = widget_spec(widget)
     return {
         "widget": {
@@ -137,7 +142,7 @@ def layout_item(page: str, index: int, widget: dict) -> dict:
                                    "disaggregated": disaggregated}}],
             "spec": spec,
         },
-        "position": {key: widget[key] for key in ("x", "y", "width", "height")},
+        "position": position,
     }
 
 

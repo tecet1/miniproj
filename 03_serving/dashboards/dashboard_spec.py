@@ -10,8 +10,9 @@
          KPI 숫자 카드도 일반 데이터셋(dims 없음)이다. 카드가 비교 쿼리에 의존하지 않게 해서, 비교 쿼리가 실패해도 카드는 뜬다.
   비교   "compare": {지표: 표시 방식}. 지표마다 한 행: 지표 이름, 현재 값 문장("12,345원"), 직전 기간 대비, 전년 동기 대비("▲ 12.3%").
          비교 기간에 상품결제건수가 0이면 "실적이 없습니다.", 비교할 수 없으면(비교값 0·없음) "-". 환불금액비율은 %p(비율의 차)다.
-[위젯] kind = counter(숫자 하나) | bar(막대, horizontal이면 가로) | line(선) | table(표). 위치는 6칸 격자 기준이다.
+[위젯] kind = counter(숫자 하나) | bar(막대, horizontal이면 가로) | line(선) | table(표) | text(섹션 제목, 마크다운). 위치는 6칸 격자 기준이다.
   KPI 카드 하나는 counter 위젯 하나다. 증감은 카드에 붙이지 않고 비교 표 하나에 모은다 (Lakeview 위젯은 한 칸에 값 하나만 담는다).
+  배치·문구의 기준은 plans/05 카드 5-G "최종 시안 기준 구현 명세"(Claude Design 시안)다.
 [로컬 검증] 쿼리가 쓰는 date_sub·datediff·add_months·weekday·format_number는 Spark 함수다. 로컬 테스트는 같은 이름의
   함수를 sqlite에 등록해 같은 문장을 실행한다 (등록한 함수의 동작이 Spark와 같은지는 Databricks에서만 확인된다).
 """
@@ -97,9 +98,8 @@ DATASETS = [
      "order": "refund_amount DESC, refund_reason"},
 ]
 
-# 와이어프레임의 문구 (제목 아래 작은 글씨)
+# 시안의 문구 (제목 아래 작은 글씨)
 NOTE_COMPARE = "비교 기간(자동): 직전 같은 길이 · 전년 동기"
-NOTE_REFUND_BASIS = "환불은 원결제일 기준으로 귀속합니다."
 NOTE_LOWER_BETTER = "낮을수록 좋은 지표입니다."
 COMPARE_COLUMNS = ["metric", "current_value", "vs_prev", "vs_yoy"]
 
@@ -110,58 +110,74 @@ def _card(dataset: str, measure: str, x: int, y: int, width: int, height: int, n
             "x": x, "y": y, "width": width, "height": height}
 
 
+def _section(title: str, y: int, note: str = "") -> dict:
+    """섹션 제목 = text 위젯 (쿼리 없음). 폭 6, 높이 1."""
+    lines = [f"### {title}"] + ([note] if note else [])
+    return {"kind": "text", "title": title, "lines": lines, "x": 0, "y": y, "width": 6, "height": 1}
+
+
 # 위젯: dataset, kind, title, 보여줄 열(counter는 value 하나, bar·line은 x_field와 y_fields, table은 columns), 위치.
-# 선택 항목: note(제목 아래 작은 설명), color_field(계열 열, 채널이면 고정 색), horizontal(가로 막대).
+# 선택 항목: note(제목 아래 작은 설명), color_field(계열 열, 채널이면 고정 색), horizontal(가로 막대). text는 lines만 갖는다.
 PAGES = [
     {"name": "sales", "title": "판매", "widgets": [
-        _card("sales_kpi", "total_sales", 0, 0, 2, 3),
-        _card("sales_kpi", "net_sales", 2, 0, 2, 3),
-        _card("sales_kpi", "refund_ratio", 4, 0, 2, 3, NOTE_LOWER_BETTER),
-        _card("sales_kpi", "paying_customers", 0, 3, 1, 2),
-        _card("sales_kpi", "average_order_value", 1, 3, 1, 2),
-        _card("sales_kpi", "item_count", 2, 3, 1, 2),
-        _card("sales_kpi", "unit_price_per_item", 3, 3, 1, 2),
-        _card("sales_kpi", "refund_amount", 4, 3, 2, 2),
-        {"dataset": "sales_compare", "kind": "table", "title": "직전 기간 · 전년 동기 대비", "note": NOTE_COMPARE,
-         "columns": COMPARE_COLUMNS, "x": 0, "y": 5, "width": 6, "height": 5},
-        {"dataset": "sales_trend_by_channel_week", "kind": "line", "title": "채널별 총판매금액 추이 (주별)",
+        _section("핵심 지표", 0, NOTE_COMPARE),
+        _card("sales_kpi", "total_sales", 0, 1, 2, 3, "조회 기간 합계"),
+        _card("sales_kpi", "net_sales", 2, 1, 2, 3, "총판매금액 − 환불금액"),
+        _card("sales_kpi", "refund_ratio", 4, 1, 2, 3, NOTE_LOWER_BETTER),
+        _card("sales_kpi", "paying_customers", 0, 4, 1, 2),
+        _card("sales_kpi", "average_order_value", 1, 4, 1, 2),
+        _card("sales_kpi", "item_count", 2, 4, 1, 2),
+        _card("sales_kpi", "unit_price_per_item", 3, 4, 1, 2),
+        _card("sales_kpi", "refund_amount", 4, 4, 1, 2),
+        _card("refund_kpi", "refund_quantity", 5, 4, 1, 2),   # sales_metrics에 환불수량이 없다. 같은 필터·원결제일 귀속
+        {"dataset": "sales_compare", "kind": "table", "title": "직전 기간 · 전년 동기 대비",
+         "note": "증감은 기호와 숫자만 씁니다. 비교 기간에 결제가 없으면 \"실적이 없습니다.\"",
+         "columns": COMPARE_COLUMNS, "x": 0, "y": 6, "width": 6, "height": 6},
+        _section("추이", 12),
+        {"dataset": "sales_trend_by_channel_week", "kind": "line", "title": "채널별 총판매금액 추이 · 주별",
          "note": "첫 주와 마지막 주는 부분 기간일 수 있습니다.",
          "x_field": "payment_week", "y_fields": ["total_sales"], "color_field": "channel_name",
-         "x": 0, "y": 10, "width": 6, "height": 6},
-        {"dataset": "channel_net_share", "kind": "bar", "title": "채널별 순판매금액 비중 (큰 순)", "x_field": "channel_name",
+         "x": 0, "y": 13, "width": 6, "height": 6},
+        {"dataset": "channel_net_share", "kind": "bar", "title": "채널별 순판매금액 비중 · 큰 순", "x_field": "channel_name",
          "y_fields": ["net_sales_share"], "horizontal": True, "color_field": "channel_name",
-         "x": 0, "y": 16, "width": 3, "height": 6},
-        {"dataset": "refund_ratio_by_week", "kind": "line", "title": "환불금액비율 추이 (주별, 채널 합계)",
-         "note": "주별 값은 그 주의 분자·분모로 다시 계산한 값입니다.", "x_field": "payment_week",
-         "y_fields": ["refund_ratio"], "x": 3, "y": 16, "width": 3, "height": 6},
-        {"dataset": "sales_by_method", "kind": "bar", "title": "결제수단별 총판매금액 (큰 순)", "x_field": "method_name",
-         "y_fields": ["total_sales_share"], "horizontal": True, "x": 0, "y": 22, "width": 3, "height": 6},
-        {"dataset": "sales_by_category", "kind": "bar", "title": "카테고리별 총판매금액 (큰 순)", "x_field": "category",
-         "y_fields": ["total_sales_share"], "horizontal": True, "x": 3, "y": 22, "width": 3, "height": 6},
+         "x": 0, "y": 19, "width": 3, "height": 6},
+        {"dataset": "refund_ratio_by_week", "kind": "line", "title": "환불금액비율 추이 · 주별, 채널 합계",
+         "note": "주마다 그 주의 분자·분모로 다시 계산한 값입니다.", "x_field": "payment_week",
+         "y_fields": ["refund_ratio"], "x": 3, "y": 19, "width": 3, "height": 6},
+        _section("구성", 25),
+        {"dataset": "sales_by_method", "kind": "bar", "title": "결제수단별 총판매금액 · 큰 순", "x_field": "method_name",
+         "y_fields": ["total_sales_share"], "horizontal": True, "x": 0, "y": 26, "width": 3, "height": 6},
+        {"dataset": "sales_by_category", "kind": "bar", "title": "카테고리별 총판매금액 · 큰 순", "x_field": "category",
+         "y_fields": ["total_sales_share"], "horizontal": True, "x": 3, "y": 26, "width": 3, "height": 6},
+        _section("상세", 32),
         {"dataset": "sales_by_channel", "kind": "table", "title": "채널별 지표",
          "columns": ["channel_name", "total_sales", "net_sales", "refund_ratio", "paying_customers",
                      "average_order_value"],
-         "x": 0, "y": 28, "width": 6, "height": 4},
+         "x": 0, "y": 33, "width": 6, "height": 5},
     ]},
     {"name": "refund", "title": "환불", "widgets": [
-        _card("refund_kpi", "refund_amount", 0, 0, 2, 3, NOTE_REFUND_BASIS),
-        _card("refund_kpi", "refund_quantity", 2, 0, 2, 3),
-        _card("sales_kpi", "refund_ratio", 4, 0, 2, 3, NOTE_LOWER_BETTER),
-        {"dataset": "refund_compare", "kind": "table", "title": "직전 기간 · 전년 동기 대비", "note": NOTE_COMPARE,
-         "columns": COMPARE_COLUMNS, "x": 0, "y": 3, "width": 6, "height": 3},
-        {"dataset": "refund_by_reason", "kind": "bar", "title": "사유별 환불금액 (큰 순 · 비중)", "x_field": "refund_reason",
+        _section("핵심 지표", 0, NOTE_COMPARE),
+        _card("refund_kpi", "refund_amount", 0, 1, 2, 3, "원결제일이 조회 기간에 든 환불"),
+        _card("refund_kpi", "refund_quantity", 2, 1, 2, 3, "환불된 상품 수량 합계"),
+        _card("sales_kpi", "refund_ratio", 4, 1, 2, 3, NOTE_LOWER_BETTER),
+        {"dataset": "refund_compare", "kind": "table", "title": "직전 기간 · 전년 동기 대비",
+         "columns": COMPARE_COLUMNS, "x": 0, "y": 4, "width": 6, "height": 3},
+        _section("구성", 7),
+        {"dataset": "refund_by_reason", "kind": "bar", "title": "사유별 환불금액 비중 · 큰 순", "x_field": "refund_reason",
          "note": "금액·수량은 아래 표에서 봅니다.", "y_fields": ["refund_amount_share"], "horizontal": True,
-         "x": 0, "y": 6, "width": 3, "height": 6},
-        {"dataset": "refund_ratio_by_channel", "kind": "bar", "title": "채널별 환불금액비율 (큰 순)",
-         "x_field": "channel_name", "note": "금액이 아니라 비율로 비교해야 채널 규모 차이가 가려지지 않습니다.",
+         "x": 0, "y": 8, "width": 3, "height": 6},
+        {"dataset": "refund_ratio_by_channel", "kind": "bar", "title": "채널별 환불금액비율 · 큰 순",
+         "x_field": "channel_name", "note": "비율로 비교해야 채널 규모 차이가 가려지지 않습니다.",
          "y_fields": ["refund_ratio"], "horizontal": True, "color_field": "channel_name",
-         "x": 3, "y": 6, "width": 3, "height": 6},
-        {"dataset": "refund_trend_by_week", "kind": "line", "title": "결제일별 환불금액 추이 (원결제일 귀속 · 주별)",
-         "note": "최근 주는 아직 환불이 접수 중일 수 있어 값이 낮게 보일 수 있습니다.", "x_field": "payment_week",
-         "y_fields": ["refund_amount"], "x": 0, "y": 12, "width": 6, "height": 6},
+         "x": 3, "y": 8, "width": 3, "height": 6},
+        _section("추이", 14),
+        {"dataset": "refund_trend_by_week", "kind": "line", "title": "결제일별 환불금액 추이 · 원결제일 귀속, 주별",
+         "note": "최근 주는 아직 환불이 접수 중일 수 있어 낮게 보일 수 있습니다.", "x_field": "payment_week",
+         "y_fields": ["refund_amount"], "x": 0, "y": 15, "width": 6, "height": 6},
+        _section("상세", 21),
         {"dataset": "refund_by_reason", "kind": "table", "title": "사유별 환불",
          "columns": ["refund_reason", "refund_amount", "refund_quantity", "refund_amount_share"],
-         "x": 0, "y": 18, "width": 6, "height": 5},
+         "x": 0, "y": 22, "width": 6, "height": 4},
     ]},
 ]
 

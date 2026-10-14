@@ -453,8 +453,42 @@ def is_filter_page(page: dict) -> bool:
 
 
 def widgets(dashboard: dict) -> list:
-    """지표 페이지의 위젯 (전역 필터 페이지 제외)."""
-    return [(page["name"], item) for page in dashboard["pages"] if not is_filter_page(page) for item in page["layout"]]
+    """지표 페이지의 데이터 위젯 (전역 필터 페이지와 쿼리 없는 텍스트 위젯 제외)."""
+    return [(page["name"], item) for page in dashboard["pages"] if not is_filter_page(page) for item in page["layout"]
+            if "queries" in item["widget"]]
+
+
+# plans/05 카드 5-G "최종 시안 기준 구현 명세"의 배치표를 그대로 옮긴 독립 기대값: (종류, 데이터셋.열 또는 섹션 제목, x, y, w, h)
+SPEC_LAYOUT = {
+    "sales": [
+        ("text", "핵심 지표", 0, 0, 6, 1),
+        ("counter", "sales_kpi.total_sales", 0, 1, 2, 3), ("counter", "sales_kpi.net_sales", 2, 1, 2, 3),
+        ("counter", "sales_kpi.refund_ratio", 4, 1, 2, 3),
+        ("counter", "sales_kpi.paying_customers", 0, 4, 1, 2), ("counter", "sales_kpi.average_order_value", 1, 4, 1, 2),
+        ("counter", "sales_kpi.item_count", 2, 4, 1, 2), ("counter", "sales_kpi.unit_price_per_item", 3, 4, 1, 2),
+        ("counter", "sales_kpi.refund_amount", 4, 4, 1, 2), ("counter", "refund_kpi.refund_quantity", 5, 4, 1, 2),
+        ("table", "sales_compare", 0, 6, 6, 6),
+        ("text", "추이", 0, 12, 6, 1),
+        ("line", "sales_trend_by_channel_week", 0, 13, 6, 6),
+        ("bar", "channel_net_share", 0, 19, 3, 6), ("line", "refund_ratio_by_week", 3, 19, 3, 6),
+        ("text", "구성", 0, 25, 6, 1),
+        ("bar", "sales_by_method", 0, 26, 3, 6), ("bar", "sales_by_category", 3, 26, 3, 6),
+        ("text", "상세", 0, 32, 6, 1),
+        ("table", "sales_by_channel", 0, 33, 6, 5),
+    ],
+    "refund": [
+        ("text", "핵심 지표", 0, 0, 6, 1),
+        ("counter", "refund_kpi.refund_amount", 0, 1, 2, 3), ("counter", "refund_kpi.refund_quantity", 2, 1, 2, 3),
+        ("counter", "sales_kpi.refund_ratio", 4, 1, 2, 3),
+        ("table", "refund_compare", 0, 4, 6, 3),
+        ("text", "구성", 0, 7, 6, 1),
+        ("bar", "refund_by_reason", 0, 8, 3, 6), ("bar", "refund_ratio_by_channel", 3, 8, 3, 6),
+        ("text", "추이", 0, 14, 6, 1),
+        ("line", "refund_trend_by_week", 0, 15, 6, 6),
+        ("text", "상세", 0, 21, 6, 1),
+        ("table", "refund_by_reason", 0, 22, 6, 4),
+    ],
+}
 
 
 class TestJson(unittest.TestCase):
@@ -602,24 +636,23 @@ class TestJson(unittest.TestCase):
                     self.assertTrue(apart, (page["displayName"], a, b))
 
     def test_kpi_cards_are_one_counter_each(self):
-        """판매: 큰 카드 3개(총판매금액·순판매금액·환불금액비율) + 작은 카드 5개, 환불: 큰 카드 3개. 카드 하나 = counter 위젯 하나."""
+        """판매: 큰 카드 3개(총판매금액·순판매금액·환불금액비율) + 작은 카드 6개(환불수량 포함), 환불: 큰 카드 3개. 카드 하나 = counter 위젯 하나."""
         def cards(page, small):
             return [w["value"] for w in next(p for p in spec.PAGES if p["name"] == page)["widgets"]
                     if w["kind"] == "counter" and (w["height"] == 2) == small]
         self.assertEqual(["total_sales", "net_sales", "refund_ratio"], cards("sales", False))
-        self.assertEqual(["paying_customers", "average_order_value", "item_count", "unit_price_per_item", "refund_amount"],
-                         cards("sales", True))
+        self.assertEqual(["paying_customers", "average_order_value", "item_count", "unit_price_per_item", "refund_amount",
+                          "refund_quantity"], cards("sales", True))
         self.assertEqual(["refund_amount", "refund_quantity", "refund_ratio"], cards("refund", False))
-        self.assertEqual(8, sum(w["kind"] == "counter" for w in spec.PAGES[0]["widgets"]))
+        self.assertEqual(9, sum(w["kind"] == "counter" for w in spec.PAGES[0]["widgets"]))
         self.assertEqual(3, sum(w["kind"] == "counter" for w in spec.PAGES[1]["widgets"]))
 
     def test_changes_are_collected_in_one_table_per_page(self):
         for page, name in (("sales", "sales_compare"), ("refund", "refund_compare")):
-            tables = [w for w in next(p for p in spec.PAGES if p["name"] == page)["widgets"] if w["dataset"] == name]
+            tables = [w for w in next(p for p in spec.PAGES if p["name"] == page)["widgets"] if w.get("dataset") == name]
             with self.subTest(page=page):
                 self.assertEqual(1, len(tables))
                 self.assertEqual(["metric", "current_value", "vs_prev", "vs_yoy"], tables[0]["columns"])
-                self.assertEqual(spec.NOTE_COMPARE, tables[0]["note"])
 
     def test_cards_do_not_depend_on_the_comparison_query(self):
         """비교 표 쿼리(CTE)가 실패해도 숫자 카드는 뜬다: 카드 데이터셋은 CTE가 없는 단순 조회다."""
@@ -628,15 +661,44 @@ class TestJson(unittest.TestCase):
                 if widget["kind"] == "counter":
                     self.assertNotIn("WITH", spec.dataset_query(DATASETS[widget["dataset"]]))
 
-    def test_wireframe_notes_are_shown_under_titles(self):
+    def test_layout_matches_the_approved_design_spec(self):
+        """위젯 종류·데이터셋(카드는 열까지)·위치가 명세 배치표와 같다 (시안 https://claude.ai/artifact/CzuDV4PbqLs78GMWGNQKmE)."""
+        for page in spec.PAGES:
+            got = []
+            for w in page["widgets"]:
+                if w["kind"] == "text":
+                    key = w["title"]
+                elif w["kind"] == "counter":
+                    key = f"{w['dataset']}.{w['value']}"
+                else:
+                    key = w["dataset"]
+                got.append((w["kind"], key, w["x"], w["y"], w["width"], w["height"]))
+            with self.subTest(page=page["name"]):
+                self.assertEqual(SPEC_LAYOUT[page["name"]], got)
+
+    def test_section_titles_are_text_widgets_without_queries(self):
+        for page in DASHBOARD["pages"]:
+            if is_filter_page(page):
+                continue
+            texts = [i["widget"] for i in page["layout"] if "multilineTextboxSpec" in i["widget"]]
+            with self.subTest(page=page["displayName"]):
+                self.assertEqual(4, len(texts))
+                for widget in texts:
+                    self.assertNotIn("queries", widget)
+                    self.assertTrue(widget["multilineTextboxSpec"]["lines"][0].startswith("### "))
+        first = next(i for i in DASHBOARD["pages"][0]["layout"] if "multilineTextboxSpec" in i["widget"])
+        self.assertEqual(["### 핵심 지표", spec.NOTE_COMPARE], first["widget"]["multilineTextboxSpec"]["lines"])
+
+    def test_design_notes_are_shown_under_titles(self):
         notes = [(w["title"], w["note"]) for p in spec.PAGES for w in p["widgets"] if w.get("note")]
-        self.assertIn(("환불금액비율", "낮을수록 좋은 지표입니다."), notes)
-        self.assertIn(("환불금액", "환불은 원결제일 기준으로 귀속합니다."), notes)
-        texts = [n for _, n in notes]
-        self.assertIn("첫 주와 마지막 주는 부분 기간일 수 있습니다.", texts)
-        self.assertIn("최근 주는 아직 환불이 접수 중일 수 있어 값이 낮게 보일 수 있습니다.", texts)
-        item = next(i for _, i in widgets(DASHBOARD) if i["widget"]["spec"]["frame"].get("title") == "환불금액비율")
-        self.assertEqual(spec.NOTE_LOWER_BETTER, item["widget"]["spec"]["frame"]["description"])
+        for pair in (("총판매금액", "조회 기간 합계"), ("순판매금액", "총판매금액 − 환불금액"),
+                     ("환불금액비율", "낮을수록 좋은 지표입니다."), ("환불금액", "원결제일이 조회 기간에 든 환불"),
+                     ("환불수량", "환불된 상품 수량 합계"),
+                     ("채널별 총판매금액 추이 · 주별", "첫 주와 마지막 주는 부분 기간일 수 있습니다."),
+                     ("결제일별 환불금액 추이 · 원결제일 귀속, 주별", "최근 주는 아직 환불이 접수 중일 수 있어 낮게 보일 수 있습니다.")):
+            self.assertIn(pair, notes)
+        item = next(i for _, i in widgets(DASHBOARD) if i["widget"]["spec"]["frame"].get("title") == "순판매금액")
+        self.assertEqual("총판매금액 − 환불금액", item["widget"]["spec"]["frame"]["description"])
 
     def test_all_spec_6_5_sales_measures_are_shown_as_kpi(self):
         shown = {w["value"] for p in spec.PAGES for w in p["widgets"] if w["kind"] == "counter"}
