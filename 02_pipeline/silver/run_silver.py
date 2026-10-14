@@ -20,7 +20,6 @@ CHECKPOINT = "/Volumes/commerce_poc/silver/checkpoints/silver_events"
 # ADLS 저장 위치: 스키마의 MANAGED LOCATION. 테이블과 체크포인트 볼륨이 이 아래에 저장된다
 STORAGE_ROOT = "abfss://commerce-poc@swleeteststorage01.dfs.core.windows.net/storage"
 SILVER_PATH = f"{STORAGE_ROOT}/silver"
-SINCE = "2026-10-12T02:09:45.000Z"  # run_bronze.py와 같은 값 (send_events.py가 출력한 started_at)
 
 # COMMAND ----------
 
@@ -37,18 +36,18 @@ create_tables(spark, SCHEMA)
 
 # COMMAND ----------
 
-run_silver(spark, BRONZE_TABLE, SCHEMA, CHECKPOINT, load_known_skus(), SINCE)
+run_silver(spark, BRONZE_TABLE, SCHEMA, CHECKPOINT, load_known_skus())
 
 # COMMAND ----------
 
 # 비어 있으면 expected.json과 일치한다
-print(check_silver(spark, SCHEMA, BRONZE_TABLE, SINCE) or "OK")
+print(check_silver(spark, SCHEMA, BRONZE_TABLE) or "OK")
 
 # COMMAND ----------
 
 # 재실행 검증: 새 체크포인트로 Bronze를 처음부터 다시 읽어도 건수가 그대로여야 한다 (insert-only MERGE의 멱등성)
-run_silver(spark, BRONZE_TABLE, SCHEMA, CHECKPOINT + "_rerun", load_known_skus(), SINCE)
-print(check_silver(spark, SCHEMA, BRONZE_TABLE, SINCE) or "OK")
+run_silver(spark, BRONZE_TABLE, SCHEMA, CHECKPOINT + "_rerun", load_known_skus())
+print(check_silver(spark, SCHEMA, BRONZE_TABLE) or "OK")
 
 # COMMAND ----------
 

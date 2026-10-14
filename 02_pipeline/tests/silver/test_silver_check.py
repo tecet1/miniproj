@@ -1,4 +1,5 @@
 """silver_check의 비교 함수 테스트 (pyspark 없이). Spark 조회 함수는 Databricks에서만 확인한다."""
+import inspect
 import json
 import sys
 import unittest
@@ -17,6 +18,10 @@ REASONS = {(ch, r): 1 for ch in "ABC" for r in ("MISSING_REQUIRED", "INVALID_TYP
 class TestCompare(unittest.TestCase):
     def test_default_expected_file_is_found(self):
         self.assertEqual(72, EXPECTED["bronze_rows"])
+
+    def test_checks_have_no_time_cutoff(self):
+        for function in (silver_check.check_silver, silver_check.count_bronze):
+            self.assertNotIn("since", inspect.signature(function).parameters, function.__name__)
 
     def test_good_counts_have_no_problem(self):
         self.assertEqual([], silver_check.compare_counts(GOOD, EXPECTED))

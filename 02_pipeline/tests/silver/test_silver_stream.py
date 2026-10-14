@@ -3,6 +3,7 @@
 [확인하는 것] 테이블 컬럼 순서, MERGE 문장, foreachBatch 처리 순서와 대상 테이블·키.
 [확인하지 못하는 것] 실제 Spark 변환·UDF·MERGE 결과. 이것은 Databricks에서 silver_check로 확인한다 (미검증).
 """
+import inspect
 import sys
 import unittest
 from pathlib import Path
@@ -137,6 +138,11 @@ class TestBatchHandler(unittest.TestCase):
 class TestModuleShape(unittest.TestCase):
     def test_imports_without_pyspark(self):
         self.assertTrue(callable(silver_stream.run_silver))
+
+    def test_run_silver_has_no_time_cutoff(self):
+        """읽은 위치는 체크포인트가 기억한다. 시각 인자(since)로 범위를 자르지 않는다 (2026-10-14)."""
+        for function in (silver_stream.run_silver, silver_stream.read_bronze):
+            self.assertNotIn("since", inspect.signature(function).parameters, function.__name__)
 
     def test_builders_cover_every_event_table(self):
         self.assertEqual(set(TABLES) - {"quarantine"}, set(silver_stream.BUILDERS))

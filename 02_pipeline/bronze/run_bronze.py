@@ -21,7 +21,6 @@ CHECKPOINT = "/Volumes/commerce_poc/bronze/checkpoints/bronze_events"
 # ADLS 저장 위치: 스키마의 MANAGED LOCATION. 테이블과 체크포인트 볼륨이 이 아래에 저장된다 (Silver·Gold는 같은 루트의 silver, gold)
 STORAGE_ROOT = "abfss://commerce-poc@swleeteststorage01.dfs.core.windows.net/storage"
 BRONZE_PATH = f"{STORAGE_ROOT}/bronze"
-SINCE = "2026-10-12T02:09:45.000Z"  # send_events.py가 출력한 started_at
 
 # COMMAND ----------
 
@@ -47,7 +46,7 @@ display(spark.table(TABLE).groupBy("channel").count())
 # COMMAND ----------
 
 # 비어 있으면 fixtures와 일치한다
-print(check_bronze(spark, TABLE, SINCE) or "OK")
+print(check_bronze(spark, TABLE) or "OK")
 
 
 # COMMAND ----------

@@ -33,13 +33,13 @@ BRONZE_COLUMNS = ["channel", "received_at", "payload", "eh_partition", "eh_offse
 RESULT_SCHEMA = "event_id string, event_type string, event_json string, reason_code string"
 
 
-def read_bronze(spark, table: str, since: str):
-    """Bronze 테이블을 스트림으로 읽는다. channel이 있고 received_at이 since 이후인 행만 남긴다.
+def read_bronze(spark, table: str):
+    """Bronze 테이블을 스트림으로 읽는다. channel이 있는 행만 남긴다 (봉투가 없는 이전 테스트 메시지 제외).
 
-    조건은 bronze_check.load_bronze_pairs와 같다 (봉투가 없는 이전 테스트 메시지 제외).
+    어디까지 읽었는지는 체크포인트가 기억한다. 시각으로 범위를 자르지 않는다.
+    조건은 bronze_check.load_bronze_pairs, silver_check.count_bronze와 같다.
     """
-    return spark.readStream.table(table).where(
-        F.col("channel").isNotNull() & (F.col("received_at") >= F.to_timestamp(F.lit(since))))
+    return spark.readStream.table(table).where(F.col("channel").isNotNull())
 
 
 def convert_bronze(bronze_df, known_skus: set):
@@ -218,12 +218,12 @@ def make_batch_handler(schema: str, known_skus: set):
     return handle
 
 
-def run_silver(spark, bronze_table: str, schema: str, checkpoint_path: str, known_skus: set, since: str) -> None:
+def run_silver(spark, bronze_table: str, schema: str, checkpoint_path: str, known_skus: set) -> None:
     """Bronze를 읽어 foreachBatch로 Silver에 쓰고, 쌓인 분량을 모두 처리하면 끝낸다.
 
     같은 체크포인트로 다시 실행하면 새 Bronze 행만 읽는다. 처음부터 다시 읽어 멱등을 확인하려면 새 체크포인트 경로를 쓴다.
     """
-    query = (read_bronze(spark, bronze_table, since)
+    query = (read_bronze(spark, bronze_table)
              .writeStream
              .foreachBatch(make_batch_handler(schema, known_skus))
              .option("checkpointLocation", checkpoint_path)

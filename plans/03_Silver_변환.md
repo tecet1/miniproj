@@ -60,7 +60,7 @@ Bronze를 먼저 구현해 문서와 어긋났던 부분을 2026-10-12 사용자
 
 foreachBatch 배치 하나마다 다음을 수행한다. 함수 이름은 `silver_stream.py`와 같다.
 
-1. `read_bronze`: Bronze를 스트림으로 읽는다. `channel`이 있고 `received_at >= since`인 행만 쓴다 (`bronze_check`와 같은 조건).
+1. `read_bronze`: Bronze를 스트림으로 읽는다. `channel`이 있는 행만 쓴다 (`bronze_check`와 같은 조건). 읽은 위치는 체크포인트가 기억하고 시각(`since`)으로 범위를 자르지 않는다 (2026-10-14 변경). 검증은 Bronze가 이번 데이터만 담고 있다는 전제이므로, 전체 재실행은 스키마를 지우고 다시 적재한다.
 2. `convert_bronze`: UDF가 행마다 `convert_row`를 호출해 `result(event_id, event_type, event_json, reason_code)`를 붙인다. `convert_row`는 예외를 내지 않는다 (예외로 죽으면 배치 전체가 실패한다).
 3. 격리: `reason_code`가 있는 행은 `build_quarantine`으로 Bronze 7컬럼 + `reason_code` + `quarantined_at`을 만들어 `(eh_partition, eh_offset)` 기준 insert-only MERGE.
 4. 정상: `dedupe_events`로 `(channel, event_id)`당 최초 1건(`received_at`, `eh_partition`, `eh_offset` 오름차순)만 남기고, `parse_events`가 `event_json`을 `EVENT_SCHEMA`로 읽는다.

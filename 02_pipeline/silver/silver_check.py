@@ -1,6 +1,6 @@
 """Silver 테이블이 독립 기대값(expected.json)과 맞는지 확인한다. 노트북에서 호출만 한다.
 
-[입력] Silver 스키마 이름(예: "commerce_poc.silver"), Bronze 테이블, since, expected.json 경로
+[입력] Silver 스키마 이름(예: "commerce_poc.silver"), Bronze 테이블, expected.json 경로
 [출력] 문제 문장 목록. 빈 목록이면 모두 일치한다.
 [확인 항목]
   1. 테이블별 건수 = expected.json total (orders, order_items, payments, order_cancellations, refunds, quarantine)
@@ -75,12 +75,12 @@ def count_tables(spark, schema: str) -> dict:
     return {table: spark.table(f"{schema}.{table}").count() for table in TABLES}
 
 
-def count_bronze(spark, table: str, since: str) -> int:
-    """check_bronze와 같은 조건: channel이 있고 received_at이 since 이후인 행."""
+def count_bronze(spark, table: str) -> int:
+    """check_bronze와 같은 조건: channel이 있는 행."""
     import pyspark.sql.functions as F
 
     return (spark.table(table)
-            .where(F.col("channel").isNotNull() & (F.col("received_at") >= F.to_timestamp(F.lit(since))))
+            .where(F.col("channel").isNotNull())
             .count())
 
 
@@ -154,12 +154,12 @@ def count_amount_mismatches(spark, schema: str) -> dict:
     return {"결제금액 != 상품합+배송비": spark.sql(sql).first()["n"]}
 
 
-def check_silver(spark, schema: str, bronze_table: str, since: str, expected_path=DEFAULT_EXPECTED) -> list[str]:
+def check_silver(spark, schema: str, bronze_table: str, expected_path=DEFAULT_EXPECTED) -> list[str]:
     """Silver 전체를 기대값과 비교해 문제 문장 목록을 돌려준다. 빈 목록이면 일치한다."""
     expected_total = json.loads(Path(expected_path).read_text(encoding="utf-8"))["total"]
     actual = count_tables(spark, schema)
     return (compare_counts(actual, expected_total)
-            + compare_bronze_balance(count_bronze(spark, bronze_table, since), actual, expected_total)
+            + compare_bronze_balance(count_bronze(spark, bronze_table), actual, expected_total)
             + compare_reasons(count_reasons(spark, schema))
             + compare_zero("PK 중복", count_pk_duplicates(spark, schema))
             + compare_zero("참조 누락", count_orphans(spark, schema))
