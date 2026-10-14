@@ -77,11 +77,11 @@ Silver에서 결제 성공 주문상품 Fact와 환불 Fact, 이를 공유하는
 
 ## 상태
 
-**완료(2026-10-13, 사용자 보고 기준) → 일자 차원 제외(2026-10-14)로 Databricks 재검증 필요(미검증).** 로컬 테스트는 변경 후 통과했다. 변경 전 Databricks에서는 건수 일치와 `run_gold` 전체 실행 OK였고 `check_gold` 출력 원문은 받지 못했다.
+**완료** (사용자 보고 기준, 2026-10-14, 일자 차원 제외 후). 로컬 테스트 통과, Databricks 재실행에서 테이블 건수가 `expected.json`과 일치하고 정합성 체크 OK(사용자 보고). `check_gold` 출력 원문은 받지 못했다.
 
 - 로컬 (Claude 환경, 2026-10-14 `dim_date` 제외 반영 후): `02_pipeline/tests` 전체 378건 통과, 그중 `gold/` 65건. 확인한 범위: Fact SQL을 sqlite로 픽스처 72행(Silver 행으로 변환)에 실행해 `expected.json`과 대조(건수·금액·지표 9개·결제일/결제수단/환불 프로필/환불일 분포·참조·대조 규칙), 합성 입력으로 이상 주문 제외·지연 도착·부분 환불 합산·사유 없음·익명 고객·채널 분리, Dimension 행, MERGE 문장, `build_gold` 호출 순서(가짜 Spark 객체), 비교 함수.
 - 테스트가 규칙 위반을 실제로 잡는지 변형 7개로 확인했다(UTC 일자, 취소 제외 삭제, 결제 상태 조건 삭제, 사유 기본값 삭제, 환불 합계를 최대값으로 변경, 환불 조인 키를 주문 ID로 변경, 환불의 주문 조인 삭제). 처음에 2개(환불 조인 키, 환불의 주문 조인)는 테스트를 통과해 테스트를 추가했고 모두 잡힌다.
-- Databricks (사용자 보고, `dim_date` 제외 **이전** 실행): 건수 조회 결과가 당시 `expected.json`과 일치했다: `fact_sales_item` 30, `fact_refund` 3, `dim_date` 1, `dim_channel` 3, `dim_product` 15, `dim_payment_method` 5, `dim_refund_profile` 10. 이어서 "골드는 전부 실행 OK"라는 보고를 받았다. 첫 `check_gold`와 재실행 모두 OK로 이해했으나 출력 원문은 보지 못했다.
+- Databricks (사용자 보고): 2026-10-14 `dim_date` 제외 후 재실행에서 `fact_sales_item` 30, `fact_refund` 3, `dim_channel` 3, `dim_product` 15, `dim_payment_method` 5, `dim_refund_profile` 10으로 일치했다(`dim_date` 없음). 제외 이전(2026-10-13) 실행도 일치했다: `fact_sales_item` 30, `fact_refund` 3, `dim_date` 1, `dim_channel` 3, `dim_product` 15, `dim_payment_method` 5, `dim_refund_profile` 10. 이어서 "골드는 전부 실행 OK"라는 보고를 받았다. 첫 `check_gold`와 재실행 모두 OK로 이해했으나 출력 원문은 보지 못했다.
 - 못 한 범위: 출력 원문 확인(보고만 받음). 취소+결제 성공, 부분 환불 합산, 결제 2건 이상 주문은 픽스처에 없어 Databricks에서도 실행해 보지 못했다.
-- 가정·한계: (1) 취소+결제 성공 주문의 환불도 `fact_refund`에서 빼는 것은 ERD에 없는 추가 해석이다(6.1절에 기재, 확인 필요). (2) 일자 차원 제외 후에는 Databricks에서 아직 실행하지 않았다 (**미검증**). 기존 `commerce_poc.gold.dim_date` 테이블은 이 코드가 지우지 않으므로 사용자가 `DROP TABLE IF EXISTS`로 정리해야 한다. (3) 결제 성공이 2건 이상인 주문은 계약 위반으로 별도 규칙이 없으며, 들어오면 Fact 키가 중복되어 MERGE가 오류를 낸다. (4) 취소+결제 성공 제외와 부분 환불 합산은 현재 픽스처에 시나리오가 없어 합성 입력으로만 확인했다.
+- 가정·한계: (1) 취소+결제 성공 주문의 환불도 `fact_refund`에서 빼는 것은 ERD에 없는 추가 해석이다(6.1절에 기재, 확인 필요). (2) 기존 `commerce_poc.gold.dim_date` 테이블은 이 코드가 지우지 않으므로 사용자가 `DROP TABLE IF EXISTS`로 정리해야 한다. (3) 결제 성공이 2건 이상인 주문은 계약 위반으로 별도 규칙이 없으며, 들어오면 Fact 키가 중복되어 MERGE가 오류를 낸다. (4) 취소+결제 성공 제외와 부분 환불 합산은 현재 픽스처에 시나리오가 없어 합성 입력으로만 확인했다.
 - 저장소에 키·연결 문자열이 없다: 새로 만든 `.py`·`.md`·`.json` 텍스트를 키워드로 검색해 확인했다. Git 이력과 바이너리는 검사하지 않았다.
