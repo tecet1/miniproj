@@ -202,7 +202,9 @@ def dataset_columns(dataset: dict) -> list:
 def where_clause(period: str = "cur") -> str:
     """필터를 거는 WHERE 조건 (매개변수 표기). period가 prev·yoy면 기간만 비교 기간으로 바뀌고 채널·카테고리는 같다."""
     low, high = PERIODS[period]
-    return f"payment_date BETWEEN {low} AND {high} AND channel_name IN (:channels) AND category IN (:categories)"
+    # 다중 선택 매개변수는 배열로 전달된다. `IN (:channels)`는 쓸 수 없고 array_contains(배열, 열)로 거른다 (Databricks 문서).
+    return (f"payment_date BETWEEN {low} AND {high} AND array_contains(:channels, channel_name) "
+            f"AND array_contains(:categories, category)")
 
 
 def wrap_query(dataset: dict, inner_sql: str) -> str:

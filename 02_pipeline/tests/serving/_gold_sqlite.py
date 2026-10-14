@@ -9,6 +9,7 @@ Metric View 엔진 자체(MEASURE 해석, YAML 파싱)는 흉내 내지 않는�
 """
 import calendar
 import datetime
+import json
 import re
 import sys
 from pathlib import Path
@@ -49,15 +50,21 @@ def _date_format(value, pattern):
     return _day(value).isoformat()
 
 
+def _array_contains(array_json, value):
+    """Spark array_contains: 배열(로컬에서는 JSON 배열 문자열)에 값이 있으면 참."""
+    return value in json.loads(array_json)
+
+
 def register_spark_functions(con) -> None:
-    """Spark 함수 6개를 sqlite 사용자 함수로 등록한다. 날짜는 'YYYY-MM-DD' 문자열이다."""
+    """Spark 함수 7개를 sqlite 사용자 함수로 등록한다. 날짜는 'YYYY-MM-DD' 문자열이다."""
     for name, arity, func in (
             ("date_sub", 2, lambda d, n: (_day(d) - datetime.timedelta(days=n)).isoformat()),
             ("datediff", 2, lambda end, start: (_day(end) - _day(start)).days),
             ("add_months", 2, _add_months),
             ("weekday", 1, lambda d: _day(d).weekday()),   # 월요일 0 ... 일요일 6 (Spark weekday와 같다)
             ("date_format", 2, _date_format),
-            ("format_number", 2, _format_number)):
+            ("format_number", 2, _format_number),
+            ("array_contains", 2, _array_contains)):
         con.create_function(name, arity, func)
 
 

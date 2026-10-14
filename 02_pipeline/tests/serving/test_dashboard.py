@@ -37,8 +37,9 @@ A, B = ALL_CHANNELS[0], ALL_CHANNELS[1]   # 채널 이름: A 자사몰, B 종합
 def local_text(text: str, date_range=WIDE, channels=ALL_CHANNELS, categories=ALL_CATEGORIES) -> str:
     """쿼리 문장의 매개변수에 값을 넣는다 (sqlite 실행용)."""
     text = text.replace(":date_range.min", f"'{date_range[0]}'").replace(":date_range.max", f"'{date_range[1]}'")
-    text = text.replace(":channels", ", ".join(f"'{c}'" for c in channels))
-    return text.replace(":categories", ", ".join(f"'{c}'" for c in categories))
+    # 다중 선택 값은 배열로 전달된다: 로컬에서는 JSON 배열 문자열로 넣고 sqlite에 등록한 array_contains가 읽는다
+    text = text.replace(":channels", "'" + json.dumps(list(channels), ensure_ascii=False) + "'")
+    return text.replace(":categories", "'" + json.dumps(list(categories), ensure_ascii=False) + "'")
 
 
 def local_where(definition: dict, where: str, **filters) -> str:
@@ -145,7 +146,7 @@ class TestSpec(unittest.TestCase):
         sql = spec.dataset_query(DATASETS["sales_by_channel"])
         self.assertTrue(sql.startswith("SELECT channel_name, MEASURE(total_sales) AS total_sales,"))
         self.assertTrue(sql.endswith("FROM commerce_poc.serving.sales_metrics WHERE payment_date BETWEEN :date_range.min "
-                                     "AND :date_range.max AND channel_name IN (:channels) AND category IN (:categories) "
+                                     "AND :date_range.max AND array_contains(:channels, channel_name) AND array_contains(:categories, category) "
                                      "GROUP BY ALL ORDER BY total_sales DESC, channel_name"))
         reason = spec.dataset_query(DATASETS["refund_by_reason"])
         self.assertIn("refund_amount_share", reason)
