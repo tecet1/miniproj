@@ -10,7 +10,7 @@ sys.path.insert(0, str(ROOT / "02_pipeline" / "gold"))
 import gold_tables  # noqa: E402
 
 SPEC = (ROOT / "01_contracts" / "contracts" / "event_spec.md").read_text(encoding="utf-8")
-GOLD_NAMES = ("fact_sales_item", "fact_refund", "dim_date", "dim_channel", "dim_product", "dim_payment_method",
+GOLD_NAMES = ("fact_sales_item", "fact_refund", "dim_channel", "dim_product", "dim_payment_method",
               "dim_refund_profile")
 
 
@@ -30,13 +30,13 @@ def spec_columns(table: str) -> set:
 
 
 class TestTables(unittest.TestCase):
-    def test_the_seven_gold_tables(self):
+    def test_the_six_gold_tables(self):
         self.assertEqual(set(GOLD_NAMES), set(gold_tables.TABLES))
 
     def test_dimensions_are_created_before_facts(self):
         order = list(gold_tables.TABLES)
-        self.assertTrue(all(name.startswith("dim_") for name in order[:5]))
-        self.assertTrue(all(name.startswith("fact_") for name in order[5:]))
+        self.assertTrue(all(name.startswith("dim_") for name in order[:4]))
+        self.assertTrue(all(name.startswith("fact_") for name in order[4:]))
 
     def test_columns_match_event_spec(self):
         for table in GOLD_NAMES:
@@ -45,7 +45,7 @@ class TestTables(unittest.TestCase):
 
     def test_primary_keys_match_event_spec(self):
         want = {"fact_sales_item": ["channel", "order_item_id"], "fact_refund": ["channel", "refund_id"],
-                "dim_date": ["date"], "dim_channel": ["channel"], "dim_product": ["product_id"],
+                "dim_channel": ["channel"], "dim_product": ["product_id"],
                 "dim_payment_method": ["payment_method"], "dim_refund_profile": ["refund_profile_key"]}
         for table, pk in want.items():
             self.assertEqual(pk, gold_tables.TABLES[table]["pk"], table)
@@ -77,7 +77,7 @@ class TestTables(unittest.TestCase):
                 calls.append(statement)
 
         gold_tables.create_tables(Spark(), "c.gold")
-        self.assertEqual(7, len(calls))
+        self.assertEqual(6, len(calls))
         self.assertTrue(all(c.startswith("CREATE TABLE IF NOT EXISTS c.gold.") for c in calls))
 
 

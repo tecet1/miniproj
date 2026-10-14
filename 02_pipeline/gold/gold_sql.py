@@ -60,11 +60,3 @@ def refund_sql(silver: str, date_expr=kst_date) -> str:
         f"JOIN {silver}.payments p ON p.channel = r.channel AND p.payment_id = r.payment_id AND p.status = 'SUCCEEDED' "
         f"WHERE NOT {_has_cancellation(silver, 'r')}"
     )
-
-
-def date_range_sql(gold: str) -> str:
-    """dim_date 범위: 두 Fact의 결제일·환불일 최소~최대. 결과 한 행(first_date, last_date), Fact가 비면 둘 다 NULL."""
-    dates = (f"SELECT payment_date AS d FROM {gold}.fact_sales_item "
-             f"UNION ALL SELECT payment_date FROM {gold}.fact_refund "
-             f"UNION ALL SELECT refund_date FROM {gold}.fact_refund")
-    return f"SELECT MIN(d) AS first_date, MAX(d) AS last_date FROM ({dates}) AS all_dates"

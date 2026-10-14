@@ -277,16 +277,16 @@ Silver는 이벤트를 채널별 행동 맥락으로 해석해 이벤트 유형�
 
 ---
 
-## 6. Gold와 지표 (2026-10-13)
+## 6. Gold와 지표 (2026-10-13, 일자 차원 제외 2026-10-14)
 
-테이블 구조의 레퍼런스는 `A사_ERD.pdf` ②③이다. Gold는 Silver에서 주기적으로 다시 계산해 MERGE한다. 이 절이 지표 정의의 기준이다.
+테이블 구조의 레퍼런스는 `A사_ERD.pdf` ②③이다. Gold는 Silver에서 주기적으로 다시 계산해 MERGE한다. ERD ②의 `dim_date`는 2026-10-14에 제외했다(아래). 이 절이 지표 정의의 기준이다.
 
 ### 6.1 Fact
 
 | 테이블 | grain (단위) | PK | 컬럼 (`channel`, PK 제외) |
 |---|---|---|---|
-| fact_sales_item | 결제 성공한 주문상품 1행 | channel, order_item_id | product_id(FK), payment_date(FK, 결제일 KST), payment_method(FK), order_id, user_id, payment_id, payment_at, quantity, item_gross_amount, item_discount, item_paid_amount, refund_quantity, refund_amount, last_refund_date |
-| fact_refund | 환불 이벤트 1행 | channel, refund_id | product_id(FK), payment_date(FK, 원결제일 KST), refund_date(FK, 환불일 KST), refund_profile_key(FK), order_item_id, order_id, payment_id, refund_quantity, refund_amount |
+| fact_sales_item | 결제 성공한 주문상품 1행 | channel, order_item_id | product_id(FK), payment_date(결제일 KST), payment_method(FK), order_id, user_id, payment_id, payment_at, quantity, item_gross_amount, item_discount, item_paid_amount, refund_quantity, refund_amount, last_refund_date |
+| fact_refund | 환불 이벤트 1행 | channel, refund_id | product_id(FK), payment_date(원결제일 KST), refund_date(환불일 KST), refund_profile_key(FK), order_item_id, order_id, payment_id, refund_quantity, refund_amount |
 
 - **fact_sales_item 원천:** `order_items`를 `orders`(`channel, order_id`)와 `payments`(`channel, order_id`, `status = SUCCEEDED`)에 조인한다. 결제 성공이 있는 주문의 모든 상품 행이 대상이다. 주문당 결제 성공은 최대 1건이다(5절).
 - **금액:** `item_gross_amount = unit_price × quantity`, `item_paid_amount = item_gross_amount − item_discount`. 배송비는 넣지 않는다.
@@ -299,13 +299,12 @@ Silver는 이벤트를 채널별 행동 맥락으로 해석해 이벤트 유형�
 
 | 테이블 | grain | PK | 컬럼 | 원천 |
 |---|---|---|---|---|
-| dim_date | KST 일자 1행 | date | weekday(월~일), week_start(월요일 일자), month(`yyyy-MM`), holiday(공휴일 여부) | 생성. 범위는 두 Fact의 `payment_date`·`refund_date` 최소~최대 |
 | dim_channel | 채널 1행 | channel | channel_name | 상수: A 자사몰, B 종합 오픈마켓, C 스포츠 전문몰 |
 | dim_product | SKU 1행(현재 값만) | product_id | product_name, category | `skus.json` (SCD 없음) |
 | dim_payment_method | 결제수단 1행 | payment_method | method_name | 상수: CARD, EASY_PAY, BANK_TRANSFER, VIRTUAL_ACCOUNT, OTHER |
 | dim_refund_profile | 환불 유형 × 사유 1행(10행, junk) | refund_profile_key | refund_type, refund_reason | 상수: `CANCEL`·`RETURN` × 공통 사유 코드 5종 |
 
-`holiday`는 코드에 둔 2026년 법정 공휴일 목록(대체공휴일 제외)으로 채우며 공식 달력과 대조하지 않았다.
+일자 차원(`dim_date`)은 두지 않는다. 온라인 커머스에서 공휴일 속성의 분석 가치가 작아(오프라인 영업·배송을 고려하지 않는 한) 별도 테이블의 유지 비용을 정당화하지 못한다. `payment_date`·`refund_date`는 Fact의 `DATE` 컬럼으로 두고, 주·월 같은 날짜 속성은 필요할 때 날짜 함수로 구한다.
 
 ### 6.3 날짜 귀속
 
@@ -341,5 +340,5 @@ Silver는 이벤트를 채널별 행동 맥락으로 해석해 이벤트 유형�
 
 - 성공 결제금액 = 주문별 `Σ item_paid_amount` + 배송비 (배송비: `Σ item_paid_amount` 2만 원 이상 0원, 미만 4,000원).
 - `Σ fact_refund.refund_amount = Σ fact_sales_item.refund_amount`, 환불 수량도 같다.
-- PK 중복 0건. FK 누락 0건(상품·결제수단·환불 프로필·채널·일자가 각 Dimension에 있다).
+- PK 중복 0건. FK 누락 0건(상품·결제수단·환불 프로필·채널이 각 Dimension에 있다).
 - 건수·금액·지표는 `expected.json`과 일치한다.

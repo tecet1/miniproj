@@ -1,6 +1,6 @@
-"""Gold 테이블 정의: 컬럼·타입·PK. 기준은 event_spec.md 6.1·6.2절과 A사_ERD.pdf ②다.
+"""Gold 테이블 정의: 컬럼·타입·PK. 기준은 event_spec.md 6.1·6.2절이다 (A사_ERD.pdf ②의 dim_date는 제외했다).
 
-여기만 보면 Gold 테이블 7개의 모양을 알 수 있도록 한곳에 둔다.
+여기만 보면 Gold 테이블 6개의 모양을 알 수 있도록 한곳에 둔다.
   TABLES       테이블 이름 -> {"pk": [...], "columns": [(이름, Spark SQL 타입), ...]}. Dimension 먼저, Fact 나중
   schema_ddl   "이름 타입, ..." 문자열 (CREATE TABLE과 createDataFrame이 함께 쓴다)
   create_tables 테이블이 없으면 만든다
@@ -10,11 +10,6 @@ pyspark는 Databricks에서만 쓰므로 import하지 않는다 (spark 객체를
 
 # { "테이블 이름": {"pk": [...], "columns": [(이름, Spark SQL 타입), ...]} }
 TABLES = {
-    "dim_date": {
-        "pk": ["date"],
-        "columns": [("date", "DATE"), ("weekday", "STRING"), ("week_start", "DATE"), ("month", "STRING"),
-                    ("holiday", "BOOLEAN")],
-    },
     "dim_channel": {
         "pk": ["channel"],
         "columns": [("channel", "STRING"), ("channel_name", "STRING")],
@@ -66,6 +61,6 @@ def create_table_sql(table: str, schema: str) -> str:
 
 
 def create_tables(spark, schema: str) -> None:
-    """Gold 테이블 7개를 만든다. 이미 있으면 그대로 둔다 (재실행해도 안전)."""
+    """Gold 테이블 6개를 만든다. 이미 있으면 그대로 둔다 (재실행해도 안전)."""
     for table in TABLES:
         spark.sql(create_table_sql(table, schema))

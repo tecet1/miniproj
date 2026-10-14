@@ -107,25 +107,18 @@ class TestFixtureGold(unittest.TestCase):
                 self.assertEqual(0 if items_total >= 20000 else 4000, shipping[key])
 
     def test_dimension_keys_exist(self):
-        """Fact가 참조하는 상품·결제수단·환불 프로필·채널·일자가 Dimension에 있다."""
+        """Fact가 참조하는 상품·결제수단·환불 프로필·채널이 Dimension에 있다."""
         products = {row[0] for row in dimensions.product_rows(silver.ROOT / "01_contracts" / "contracts" / "skus.json")}
         methods = {row[0] for row in dimensions.payment_method_rows()}
         profiles = {row[0] for row in dimensions.refund_profile_rows()}
         channels = {row[0] for row in dimensions.channel_rows()}
-        dates = [r["payment_date"] for r in self.sales] + [r["payment_date"] for r in self.refunds] \
-            + [r["refund_date"] for r in self.refunds]
-        from datetime import date
-        days = {d.isoformat() for d, *_ in dimensions.date_rows(date.fromisoformat(min(dates)),
-                                                                date.fromisoformat(max(dates)))}
         for r in self.sales:
             self.assertIn(r["product_id"], products)
             self.assertIn(r["payment_method"], methods)
             self.assertIn(r["channel"], channels)
-            self.assertIn(r["payment_date"], days)
         for r in self.refunds:
             self.assertIn(r["refund_profile_key"], profiles)
             self.assertIn(r["product_id"], products)
-            self.assertIn(r["refund_date"], days)
 
     def test_s06_uses_the_successful_payment_not_the_failed_one(self):
         row = next(r for r in self.sales if r["order_id"] == "A-S06-1")
@@ -252,11 +245,6 @@ class TestSqlText(unittest.TestCase):
     def test_default_sql_uses_the_spark_expression(self):
         self.assertIn("from_utc_timestamp", gold_sql.sales_item_sql("s"))
         self.assertIn("from_utc_timestamp", gold_sql.refund_sql("s"))
-
-    def test_date_range_sql_reads_both_facts(self):
-        sql = gold_sql.date_range_sql("g")
-        self.assertIn("g.fact_sales_item", sql)
-        self.assertIn("g.fact_refund", sql)
 
 
 if __name__ == "__main__":

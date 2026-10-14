@@ -21,17 +21,12 @@ SALES_METRICS = {
     "name": "sales_metrics",
     "source": "fact_sales_item",
     "joins": [
-        ("dim_date", "source.payment_date = dim_date.date"),
         ("dim_channel", "source.channel = dim_channel.channel"),
         ("dim_product", "source.product_id = dim_product.product_id"),
         ("dim_payment_method", "source.payment_method = dim_payment_method.payment_method"),
     ],
     "dimensions": [
         ("payment_date", "payment_date"),
-        ("week_start", "dim_date.week_start"),
-        ("month", "dim_date.month"),
-        ("weekday", "dim_date.weekday"),
-        ("holiday", "dim_date.holiday"),
         ("channel", "source.channel"),
         ("channel_name", "dim_channel.channel_name"),
         ("product_id", "source.product_id"),
@@ -56,14 +51,12 @@ REFUND_METRICS = {
     "name": "refund_metrics",
     "source": "fact_refund",
     "joins": [
-        ("dim_date", "source.payment_date = dim_date.date"),
         ("dim_channel", "source.channel = dim_channel.channel"),
         ("dim_product", "source.product_id = dim_product.product_id"),
         ("dim_refund_profile", "source.refund_profile_key = dim_refund_profile.refund_profile_key"),
     ],
     "dimensions": [
         ("payment_date", "payment_date"),
-        ("month", "dim_date.month"),
         ("refund_date", "refund_date"),
         ("channel", "source.channel"),
         ("channel_name", "dim_channel.channel_name"),

@@ -65,7 +65,7 @@ class TestFixtureMetrics(unittest.TestCase):
                          [(r["refund_type"], r["refund_reason"], r["refund_amount"]) for r in reasons])
 
     def test_additive_measures_add_up_over_any_dimension(self):
-        for dim in ("payment_date", "month", "channel_name", "method_name", "category", "product_id", "weekday"):
+        for dim in ("payment_date", "channel_name", "method_name", "category", "product_id"):
             rows = query(self.con, SALES, [dim], ["total_sales", "refund_amount", "item_count"])
             with self.subTest(dimension=dim):
                 self.assertEqual((1266000, 105000, 30), (sum(r["total_sales"] for r in rows),
@@ -84,8 +84,15 @@ class TestFixtureMetrics(unittest.TestCase):
         self.assertTrue(all(names.values()))
         methods = {r["payment_method"]: r["item_count"] for r in query(self.con, SALES, ["payment_method"], ["item_count"])}
         self.assertEqual(EXPECTED["total"]["sales_item_by_payment_method"], methods)
-        by_date = query(self.con, SALES, ["payment_date", "month"], ["item_count"])
-        self.assertEqual([("2026-10-12", "2026-10", 30)], [(r["payment_date"], r["month"], r["item_count"]) for r in by_date])
+        by_date = query(self.con, SALES, ["payment_date"], ["item_count"])
+        self.assertEqual([("2026-10-12", 30)], [(r["payment_date"], r["item_count"]) for r in by_date])
+
+    def test_no_date_dimension_is_joined(self):
+        """일자 차원은 두지 않는다 (event_spec.md 6.2절). 일자 기준은 Fact의 DATE 컬럼 payment_date·refund_date다."""
+        for definition in metric_defs.DEFINITIONS.values():
+            with self.subTest(view=definition["name"]):
+                self.assertNotIn("dim_date", [name for name, _ in definition["joins"]])
+                self.assertFalse({"month", "week_start", "weekday", "holiday"} & {n for n, _ in definition["dimensions"]})
 
 
 class TestEdgeCases(unittest.TestCase):

@@ -79,7 +79,7 @@ class TestExpected(unittest.TestCase):
         self.assertEqual(self.total["refund_by_profile"], {"RETURN-DEFECT": 3})
         self.assertEqual(self.total["refund_quantity"], 3)
         self.assertEqual(self.dimensions, {"dim_channel": 3, "dim_payment_method": 5, "dim_refund_profile": 10,
-                                           "dim_product": 15, "dim_date": 1})
+                                           "dim_product": 15})
 
 
 class TestExpectedRules(unittest.TestCase):

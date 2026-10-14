@@ -1,4 +1,4 @@
-"""Serving 테스트용 도우미: 고정 입력으로 Gold 7개 테이블을 sqlite에 만들고, Metric View 정의를 같은 값을 내는 일반 SQL로 바꿔 실행한다.
+"""Serving 테스트용 도우미: 고정 입력으로 Gold 6개 테이블을 sqlite에 만들고, Metric View 정의를 같은 값을 내는 일반 SQL로 바꿔 실행한다.
 
   gold_connection(rows)     Silver 행 -> Gold SQL(gold_sql) -> sqlite `gold` 스키마의 Fact 2개 + Dimension 5개
   plain_sql(definition, dims, measures)   Metric View의 MEASURE 조회와 같은 결과를 내는 일반 SQL (정의의 조인·식을 그대로 사용)
@@ -7,7 +7,6 @@ Metric View 엔진 자체(MEASURE 해석, YAML 파싱)는 흉내 내지 않는�
 """
 import re
 import sys
-from datetime import date
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -29,18 +28,14 @@ def gold_connection(rows: dict):
     con = silver.connect(rows)
     facts = {"fact_sales_item": silver.run(con, gold_sql.sales_item_sql("silver", silver.sqlite_date)),
              "fact_refund": silver.run(con, gold_sql.refund_sql("silver", silver.sqlite_date))}
-    dates = [r[k] for table, keys in (("fact_sales_item", ("payment_date",)), ("fact_refund", ("payment_date", "refund_date")))
-             for r in facts[table] for k in keys]
-    day_rows = (dimensions.date_rows(date.fromisoformat(min(dates)), date.fromisoformat(max(dates))) if dates else [])
-    dims = {"dim_date": day_rows,
-            "dim_channel": dimensions.channel_rows(), "dim_payment_method": dimensions.payment_method_rows(),
+    dims = {"dim_channel": dimensions.channel_rows(), "dim_payment_method": dimensions.payment_method_rows(),
             "dim_refund_profile": dimensions.refund_profile_rows(), "dim_product": dimensions.product_rows(SKUS)}
     con.execute("ATTACH DATABASE ':memory:' AS gold")
     for table, definition in gold_tables.TABLES.items():
         names = gold_tables.column_names(table)
         con.execute(f"CREATE TABLE gold.{table} ({', '.join(names)})")
         data = ([[r[n] for n in names] for r in facts[table]] if table in facts
-                else [[v.isoformat() if isinstance(v, date) else v for v in r] for r in dims[table]])
+                else [list(r) for r in dims[table]])
         con.executemany(f"INSERT INTO gold.{table} VALUES ({', '.join('?' for _ in names)})", data)
     return con
 

@@ -40,7 +40,7 @@ class TestCompare(unittest.TestCase):
 
     def test_expected_row_counts(self):
         self.assertEqual({"fact_sales_item": 30, "fact_refund": 3, "dim_channel": 3, "dim_payment_method": 5,
-                          "dim_refund_profile": 10, "dim_product": 15, "dim_date": 1},
+                          "dim_refund_profile": 10, "dim_product": 15},
                          gold_check.expected_row_counts(EXPECTED))
 
     def test_matching_metrics_have_no_problem(self):
@@ -96,8 +96,7 @@ class TestDefinitions(unittest.TestCase):
         checked = {(fact, column) for fact, column, _, _ in gold_check.REFERENCES}
         for fact in ("fact_sales_item", "fact_refund"):
             for column in gold_tables.column_names(fact):
-                if column in ("channel", "product_id", "payment_method", "payment_date", "refund_date",
-                              "last_refund_date", "refund_profile_key"):
+                if column in ("channel", "product_id", "payment_method", "refund_profile_key"):
                     self.assertIn((fact, column), checked)
 
 

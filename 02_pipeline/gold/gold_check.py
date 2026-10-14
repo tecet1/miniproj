@@ -35,12 +35,8 @@ REFERENCES = [
     ("fact_sales_item", "channel", "dim_channel", "channel"),
     ("fact_sales_item", "product_id", "dim_product", "product_id"),
     ("fact_sales_item", "payment_method", "dim_payment_method", "payment_method"),
-    ("fact_sales_item", "payment_date", "dim_date", "date"),
-    ("fact_sales_item", "last_refund_date", "dim_date", "date"),
     ("fact_refund", "channel", "dim_channel", "channel"),
     ("fact_refund", "product_id", "dim_product", "product_id"),
-    ("fact_refund", "payment_date", "dim_date", "date"),
-    ("fact_refund", "refund_date", "dim_date", "date"),
     ("fact_refund", "refund_profile_key", "dim_refund_profile", "refund_profile_key"),
 ]
 

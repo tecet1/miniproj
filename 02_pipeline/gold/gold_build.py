@@ -4,7 +4,6 @@ build_gold(spark, silver_schema, gold_schema, skus_path)가 순서대로 한다.
   1. Gold 테이블이 없으면 만든다.
   2. 상수·skus.json Dimension을 키로 MERGE한다 (갱신·추가만).
   3. fact_sales_item, fact_refund를 Silver에서 다시 계산해 키로 MERGE한다 (갱신·추가·삭제).
-  4. 두 Fact의 일자 최소~최대로 dim_date를 MERGE한다 (Fact가 비어 있으면 건너뛴다).
 같은 Silver로 다시 실행해도 결과가 같다 (멱등).
 pyspark는 import하지 않는다 (spark 객체를 받아 쓴다). Databricks에서만 실행한다 (미검증).
 """
@@ -31,7 +30,3 @@ def build_gold(spark, silver_schema: str, gold_schema: str, skus_path=dimensions
     _merge_dimension(spark, gold_schema, "dim_product", dimensions.product_rows(skus_path))
     _merge_fact(spark, gold_schema, "fact_sales_item", gold_sql.sales_item_sql(silver_schema))
     _merge_fact(spark, gold_schema, "fact_refund", gold_sql.refund_sql(silver_schema))
-    bounds = spark.sql(gold_sql.date_range_sql(gold_schema)).first()
-    if bounds["first_date"] is not None:
-        _merge_dimension(spark, gold_schema, "dim_date",
-                         dimensions.date_rows(bounds["first_date"], bounds["last_date"]))

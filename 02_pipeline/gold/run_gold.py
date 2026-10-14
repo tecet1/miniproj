@@ -14,7 +14,7 @@ from gold_check import check_gold
 
 SILVER_SCHEMA = "commerce_poc.silver"
 GOLD_SCHEMA = "commerce_poc.gold"
-# ADLS 저장 위치: 스키마의 MANAGED LOCATION. Gold 테이블 7개가 이 아래에 저장된다
+# ADLS 저장 위치: 스키마의 MANAGED LOCATION. Gold 테이블 6개가 이 아래에 저장된다
 STORAGE_ROOT = "abfss://commerce-poc@swleeteststorage01.dfs.core.windows.net/storage"
 GOLD_PATH = f"{STORAGE_ROOT}/gold"
 
@@ -49,7 +49,6 @@ print(check_gold(spark, SILVER_SCHEMA, GOLD_SCHEMA) or "OK")
 # MAGIC %sql
 # MAGIC SELECT 'fact_sales_item' AS t, COUNT(*) AS n FROM commerce_poc.gold.fact_sales_item
 # MAGIC UNION ALL SELECT 'fact_refund', COUNT(*) FROM commerce_poc.gold.fact_refund
-# MAGIC UNION ALL SELECT 'dim_date', COUNT(*) FROM commerce_poc.gold.dim_date
 # MAGIC UNION ALL SELECT 'dim_channel', COUNT(*) FROM commerce_poc.gold.dim_channel
 # MAGIC UNION ALL SELECT 'dim_product', COUNT(*) FROM commerce_poc.gold.dim_product
 # MAGIC UNION ALL SELECT 'dim_payment_method', COUNT(*) FROM commerce_poc.gold.dim_payment_method

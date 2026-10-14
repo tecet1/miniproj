@@ -41,11 +41,11 @@ def compute_expected(scenarios: list[dict], skus: list[dict]) -> dict:
       - fact_sales_item 은 결제 성공이 있고 취소가 없는 주문의 상품 행 수다 (취소+결제 성공 주문은 제외).
       - fact_refund 는 위 조건을 만족하는 주문의 환불 이벤트 수다.
     total 은 세 채널 합이다. 단 paying_customers 는 채널+user_id 로 구분하므로 채널별 값의 합이다.
-    "dimensions" 는 Dimension 행 수다 (dim_product 는 skus 수, dim_date 는 두 Fact의 일자 최소~최대 일수).
+    "dimensions" 는 Dimension 행 수다 (dim_product 는 skus 수).
     """
     prices = {sku["product_id"]: sku["unit_price"] for sku in skus}
     # 시나리오는 세 채널에 같은 내용이므로 한 채널분을 계산하면 된다.
-    one_channel, distributions, dates = _count_one_channel(scenarios, prices)
+    one_channel, distributions = _count_one_channel(scenarios, prices)
     per_channel = {channel: _add_metrics({**one_channel, **{k: dict(v) for k, v in distributions.items()}})
                    for channel in CHANNELS}
     total = {key: sum(per_channel[c][key] for c in CHANNELS) for key in COUNT_KEYS}
@@ -54,7 +54,7 @@ def compute_expected(scenarios: list[dict], skus: list[dict]) -> dict:
         for channel in CHANNELS:
             merged.update(per_channel[channel][key])
         total[key] = dict(sorted(merged.items()))
-    dimensions = {**CONSTANT_DIM_ROWS, "dim_product": len(skus), "dim_date": (max(dates) - min(dates)).days + 1}
+    dimensions = {**CONSTANT_DIM_ROWS, "dim_product": len(skus)}
     return {"per_channel": per_channel, "total": _add_metrics(total), "dimensions": dimensions}
 
 
@@ -63,11 +63,11 @@ def _kst_date(moment: datetime) -> str:
     return (moment.astimezone(timezone.utc) + timedelta(hours=9)).date().isoformat()
 
 
-def _count_one_channel(scenarios: list[dict], prices: dict[str, int]) -> tuple[dict, dict, list]:
-    """한 채널의 (건수·금액, 분포, 일자 목록)을 돌려준다."""
+def _count_one_channel(scenarios: list[dict], prices: dict[str, int]) -> tuple[dict, dict]:
+    """한 채널의 (건수·금액, 분포)를 돌려준다."""
     counts = dict.fromkeys(COUNT_KEYS, 0)
     distributions = {key: Counter() for key in DISTRIBUTION_KEYS}
-    customers, dates = set(), []
+    customers = set()
     for scenario in scenarios:
         scenario_start = datetime.fromisoformat(scenario["start_kst"])
         for order in scenario["orders"]:
@@ -103,7 +103,6 @@ def _count_one_channel(scenarios: list[dict], prices: dict[str, int]) -> tuple[d
             customers.add(order["user_id"])
             distributions["sales_item_by_payment_date"][payment_date] += len(order["items"])
             distributions["sales_item_by_payment_method"][payment[0]["method"]] += len(order["items"])
-            dates.append(datetime.fromisoformat(payment_date))
             for event, when in refunds:
                 index = event["item"] - 1
                 counts["fact_refund"] += 1
@@ -112,9 +111,8 @@ def _count_one_channel(scenarios: list[dict], prices: dict[str, int]) -> tuple[d
                 distributions["refund_by_payment_date"][payment_date] += 1
                 distributions["refund_by_refund_date"][_kst_date(when)] += 1
                 distributions["refund_by_profile"][f"{event['refund_type']}-{event['reason']}"] += 1
-                dates.append(datetime.fromisoformat(_kst_date(when)))
     counts["paying_customers"] = len(customers)
-    return counts, {k: dict(sorted(v.items())) for k, v in distributions.items()}, dates
+    return counts, {k: dict(sorted(v.items())) for k, v in distributions.items()}
 
 
 def _add_metrics(counts: dict) -> dict:

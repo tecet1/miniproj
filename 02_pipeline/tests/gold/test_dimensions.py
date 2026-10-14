@@ -2,7 +2,6 @@
 import json
 import sys
 import unittest
-from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -45,38 +44,17 @@ class TestConstantDimensions(unittest.TestCase):
 
     def test_rows_fit_the_table_definitions(self):
         sample = {"dim_channel": dimensions.channel_rows(), "dim_payment_method": dimensions.payment_method_rows(),
-                  "dim_refund_profile": dimensions.refund_profile_rows(), "dim_product": dimensions.product_rows(),
-                  "dim_date": dimensions.date_rows(date(2026, 10, 12), date(2026, 10, 12))}
+                  "dim_refund_profile": dimensions.refund_profile_rows(), "dim_product": dimensions.product_rows()}
         for table, rows in sample.items():
             width = len(gold_tables.column_names(table))
             for row in rows:
                 self.assertEqual(width, len(row), table)
 
-
-class TestDateRows(unittest.TestCase):
-    def test_fixture_day(self):
-        self.assertEqual([(date(2026, 10, 12), "월", date(2026, 10, 12), "2026-10", False)],
-                         dimensions.date_rows(date(2026, 10, 12), date(2026, 10, 12)))
-
-    def test_range_is_inclusive_and_ordered(self):
-        rows = dimensions.date_rows(date(2026, 10, 9), date(2026, 10, 13))
-        self.assertEqual([date(2026, 10, d) for d in range(9, 14)], [r[0] for r in rows])
-        self.assertEqual(["금", "토", "일", "월", "화"], [r[1] for r in rows])
-
-    def test_week_starts_on_monday(self):
-        rows = dimensions.date_rows(date(2026, 10, 9), date(2026, 10, 13))
-        self.assertEqual([date(2026, 10, 5)] * 3 + [date(2026, 10, 12)] * 2, [r[2] for r in rows])
-
-    def test_month_label_crosses_year_end(self):
-        rows = dimensions.date_rows(date(2026, 12, 31), date(2027, 1, 1))
-        self.assertEqual(["2026-12", "2027-01"], [r[3] for r in rows])
-
-    def test_holiday_flag(self):
-        flags = {r[0]: r[4] for r in dimensions.date_rows(date(2026, 10, 8), date(2026, 10, 10))}
-        self.assertEqual({date(2026, 10, 8): False, date(2026, 10, 9): True, date(2026, 10, 10): False}, flags)
-
-    def test_empty_when_end_is_before_start(self):
-        self.assertEqual([], dimensions.date_rows(date(2026, 10, 13), date(2026, 10, 12)))
+    def test_date_dimension_is_not_defined(self):
+        """일자 차원은 두지 않는다 (event_spec.md 6.2절)."""
+        self.assertFalse(hasattr(dimensions, "date_rows"))
+        self.assertNotIn("dim_date", gold_tables.TABLES)
+        self.assertNotIn("dim_date", EXPECTED["dimensions"])
 
 
 if __name__ == "__main__":
