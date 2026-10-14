@@ -14,11 +14,20 @@ from gold_check import check_gold
 
 SILVER_SCHEMA = "commerce_poc.silver"
 GOLD_SCHEMA = "commerce_poc.gold"
+# ADLS 저장 위치: 스키마의 MANAGED LOCATION. Gold 테이블 7개가 이 아래에 저장된다
+STORAGE_ROOT = "abfss://commerce-poc@swleeteststorage01.dfs.core.windows.net/storage"
+GOLD_PATH = f"{STORAGE_ROOT}/gold"
 
 # COMMAND ----------
 
-# 스키마가 없으면 만든다 (Unity Catalog 권한 필요)
-spark.sql(f"CREATE SCHEMA IF NOT EXISTS {GOLD_SCHEMA}")
+# 스키마가 없으면 저장 위치를 지정해 만든다 (Unity Catalog 권한 필요). 이미 있으면 위치는 바뀌지 않는다
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS {GOLD_SCHEMA} MANAGED LOCATION '{GOLD_PATH}'")
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC -- Storage Root가 위 GOLD_PATH인지 확인한다
+# MAGIC DESCRIBE SCHEMA EXTENDED commerce_poc.gold;
 
 # COMMAND ----------
 

@@ -17,14 +17,23 @@ from validate_skus import load_known_skus
 BRONZE_TABLE = "commerce_poc.bronze.events"
 SCHEMA = "commerce_poc.silver"
 CHECKPOINT = "/Volumes/commerce_poc/silver/checkpoints/silver_events"
+# ADLS 저장 위치: 스키마의 MANAGED LOCATION. 테이블과 체크포인트 볼륨이 이 아래에 저장된다
+STORAGE_ROOT = "abfss://commerce-poc@swleeteststorage01.dfs.core.windows.net/storage"
+SILVER_PATH = f"{STORAGE_ROOT}/silver"
 SINCE = "2026-10-12T02:09:45.000Z"  # run_bronze.py와 같은 값 (send_events.py가 출력한 started_at)
 
 # COMMAND ----------
 
-# 스키마와 체크포인트 볼륨이 없으면 만든다 (Unity Catalog 권한 필요)
-spark.sql(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA}")
+# 스키마와 체크포인트 볼륨이 없으면 저장 위치를 지정해 만든다 (Unity Catalog 권한 필요). 스키마가 이미 있으면 위치는 바뀌지 않는다
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA} MANAGED LOCATION '{SILVER_PATH}'")
 spark.sql(f"CREATE VOLUME IF NOT EXISTS {SCHEMA}.checkpoints")
 create_tables(spark, SCHEMA)
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC -- Storage Root가 위 SILVER_PATH인지 확인한다
+# MAGIC DESCRIBE SCHEMA EXTENDED commerce_poc.silver;
 
 # COMMAND ----------
 

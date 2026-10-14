@@ -18,4 +18,6 @@ Metric View와 대시보드(`03_serving`)는 구현·로컬 테스트 완료, Da
 python -m unittest discover -s .\02_pipeline\tests -v
 ```
 
+저장 위치: Bronze·Silver·Gold 노트북이 스키마를 만들 때 `MANAGED LOCATION`으로 ADLS 경로(`abfss://commerce-poc@swleeteststorage01.dfs.core.windows.net/storage/{bronze,silver,gold}`)를 지정한다. 테이블과 체크포인트 볼륨은 그 아래에 저장된다. 스키마가 이미 있으면 위치는 바뀌지 않으므로 지우고 다시 만들어야 한다. Databricks 반영은 **미검증**.
+
 Spark 로직은 로컬에서 검증하지 않는다. Databricks 노트북은 함수 호출만 하며 실행 결과를 확인하기 전에는 '미검증'으로 적는다.
