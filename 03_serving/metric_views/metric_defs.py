@@ -1,8 +1,8 @@
 """Metric View 정의 2개와 YAML·CREATE 문장 생성. 지표 정의의 기준은 event_spec.md 6.5절이다.
 
   SALES_METRICS   fact_sales_item 기반: 총판매금액, 환불금액, 순판매금액, 환불금액비율, 상품결제건수, 상품결제단가,
-                  결제고객수, 객단가. 분석 기준은 결제일·채널·상품·결제수단
-  REFUND_METRICS  fact_refund 기반: 환불금액, 환불수량. 분석 기준은 결제일·환불일·채널·상품·환불 유형·사유
+                  결제고객수, 객단가. 분석 기준은 결제일·결제주·채널·상품·결제수단
+  REFUND_METRICS  fact_refund 기반: 환불금액, 환불수량. 분석 기준은 결제일·결제주·환불일·채널·상품·환불 유형·사유
   render_yaml     정의 -> Metric View YAML 문자열
   create_view_sql 정의 -> CREATE OR REPLACE VIEW ... WITH METRICS 문장
 
@@ -15,6 +15,8 @@ import json
 
 # 비율 분모는 DOUBLE로 바꿔 정수 나눗셈을 피하고, 0이면 NULLIF로 NULL이 되게 한다.
 _SALES = "SUM(item_paid_amount)"
+# 결제주 = 결제일이 속한 주의 월요일(event_spec 6.5절). weekday()는 월요일이 0이다. 로컬 테스트는 같은 이름의 함수를 sqlite에 등록해 같은 식을 실행한다.
+_WEEK = "date_sub(payment_date, weekday(payment_date))"
 _CUSTOMERS = "COUNT(DISTINCT source.channel || '|' || source.user_id)"   # user_id가 NULL이면 식이 NULL이라 세지 않는다
 
 SALES_METRICS = {
@@ -27,6 +29,7 @@ SALES_METRICS = {
     ],
     "dimensions": [
         ("payment_date", "payment_date"),
+        ("payment_week", _WEEK),
         ("channel", "source.channel"),
         ("channel_name", "dim_channel.channel_name"),
         ("product_id", "source.product_id"),
@@ -57,6 +60,7 @@ REFUND_METRICS = {
     ],
     "dimensions": [
         ("payment_date", "payment_date"),
+        ("payment_week", _WEEK),
         ("refund_date", "refund_date"),
         ("channel", "source.channel"),
         ("channel_name", "dim_channel.channel_name"),

@@ -1,8 +1,10 @@
-"""대시보드 정의와 생성된 Lakeview JSON을 검사한다.
+"""대시보드 정의와 생성된 Lakeview JSON을 검사한다. (plans/05 카드 5-F·5-G)
 
-[검증 범위] 데이터셋이 존재하는 지표·기준만 조회하는지, 같은 조회를 로컬(sqlite)에서 돌렸을 때 열과 값이 기대값과 맞는지,
+[검증 범위] 데이터셋이 존재하는 지표·기준만 조회하는지, 같은 조회를 로컬(sqlite)에서 돌렸을 때 열과 값이 손으로 계산한 기대값과 맞는지
+(결제주 경계, 비가산 지표의 주별 재계산, 이전 기간·전년 동기·증감 문장, 채널·카테고리·기간 필터, 큰 순 정렬, 구성비 합),
 위젯이 데이터셋의 열만 쓰는지, 위젯 위치가 격자 안에서 겹치지 않는지, 저장소의 JSON 파일이 정의와 같은지.
-[검증하지 못하는 것] Databricks가 이 JSON(위젯 spec 버전·encodings)을 대시보드로 열고 MEASURE() 쿼리가 실행되는지. 로컬 통과 != Databricks 성공.
+[검증하지 못하는 것] Databricks가 이 JSON(위젯 spec 버전·encodings, 선 차트·색 고정·정렬)을 대시보드로 열고 MEASURE() 쿼리와 CTE가 실행되는지,
+sqlite에 등록한 Spark 함수(date_sub·datediff·add_months·weekday·format_number)가 Spark와 같게 동작하는지. 로컬 통과 != Databricks 성공.
 """
 import json
 import re
@@ -24,33 +26,122 @@ DATASETS = {d["name"]: d for d in spec.DATASETS}
 DASHBOARD = build_dashboard.build_dashboard()
 GRID = 6
 
-
 ALL_CHANNELS = tuple(spec.CHANNEL_NAMES)
+ALL_CATEGORIES = tuple(spec.CATEGORIES)
 WIDE = ("2000-01-01", "2100-01-01")
+CATEGORY_OF = {pid: category for pid, _, category in dimensions.product_rows(g.SKUS)}
+CLOTHES, SHOES = CATEGORY_OF["SKU-001"], CATEGORY_OF["SKU-004"]
+A, B = ALL_CHANNELS[0], ALL_CHANNELS[1]   # 채널 이름: A 자사몰, B 종합 오픈마켓
 
 
-def local_where(definition: dict, date_range=WIDE, channels=ALL_CHANNELS) -> str:
-    """spec.where_clause()의 매개변수에 값을 넣고 분석 기준 이름을 정의의 식으로 바꾼 조건 (sqlite 실행용)."""
-    text = spec.where_clause()
+def local_text(text: str, date_range=WIDE, channels=ALL_CHANNELS, categories=ALL_CATEGORIES) -> str:
+    """쿼리 문장의 매개변수에 값을 넣는다 (sqlite 실행용)."""
     text = text.replace(":date_range.min", f"'{date_range[0]}'").replace(":date_range.max", f"'{date_range[1]}'")
     text = text.replace(":channels", ", ".join(f"'{c}'" for c in channels))
-    for name, expr in definition["dimensions"]:
-        text = re.sub(rf"\b{name}\b", expr, text)
-    return text
+    return text.replace(":categories", ", ".join(f"'{c}'" for c in categories))
+
+
+def local_where(definition: dict, where: str, **filters) -> str:
+    """where 조건의 매개변수에 값을 넣고 분석 기준 이름을 정의의 식으로 바꾼 조건. 한 번에 바꿔 식 안의 이름이 다시 바뀌지 않게 한다."""
+    exprs = dict(definition["dimensions"])
+    text = local_text(where, **filters)
+    return re.sub(r"\b(" + "|".join(sorted(exprs, key=len, reverse=True)) + r")\b", lambda m: exprs[m.group(1)], text)
+
+
+def local_select(**filters):
+    """spec.kpi_query에 넘기는 select 함수: 같은 정의를 일반 SQL로 조회한다."""
+    def select(view, measures, where):
+        definition = metric_defs.DEFINITIONS[view]
+        return g.plain_sql(definition, [], measures, local_where(definition, where, **filters))
+    return select
 
 
 def local_rows(con, dataset: dict, **filters) -> list:
-    """데이터셋을 일반 SQL(정의의 식)로 실행한 결과. 필터·구성비·정렬은 실제 쿼리와 같은 함수를 쓴다."""
+    """데이터셋을 로컬에서 실행한 결과. 필터·구성비·정렬·KPI 조립은 실제 쿼리와 같은 함수를 쓴다."""
+    if dataset.get("compare"):
+        return silver.run(con, local_text(spec.compare_query(), **filters))
+    if dataset.get("kpi"):
+        return silver.run(con, spec.kpi_query(dataset, local_select(**filters)))
     definition = metric_defs.DEFINITIONS[dataset["view"]]
-    inner = g.plain_sql(definition, dataset["dims"], dataset["measures"], local_where(definition, **filters))
+    inner = g.plain_sql(definition, dataset["dims"], dataset["measures"], local_where(definition, spec.where_clause(), **filters))
     return silver.run(con, spec.wrap_query(dataset, inner))
+
+
+# ── 손으로 계산하는 합성 입력 ──────────────────────────────────────────────────────────
+def sale(order_id, paid_at, user, quantity, sku="SKU-001", channel="A", price=1000):
+    """결제 성공 주문 하나(상품 1개). 금액 = quantity x price. paid_at은 UTC이고 KST는 +9시간이다."""
+    return {"orders": [silver.order(order_id, user=user, at=paid_at, channel=channel)],
+            "order_items": [{**silver.item(order_id, product=sku, quantity=quantity, price=price, channel=channel)}],
+            "payments": [silver.payment(order_id, amount=quantity * price, at=paid_at, user=user, channel=channel)]}
+
+
+def refund_of(order_id, amount, at, channel="A", user="U1"):
+    return {"refunds": [silver.refund(order_id, quantity=1, amount=amount, at=at, channel=channel, user=user)]}
+
+
+def combine(*parts) -> dict:
+    rows = {table: [] for table in silver.COLUMNS}
+    for part in parts:
+        for table, items in part.items():
+            rows[table] += items
+    return rows
+
+
+def weekly_rows() -> dict:
+    """결제주 경계 시나리오 (자사몰 A, 금액은 quantity x 1,000원). 2026-10-12는 월요일이다.
+
+    O1  10-11 23:59 KST(일)   1,000  U1  -> 주 10-05
+    O2  10-12 00:00 KST(월)   2,000  U1  -> 주 10-12   (UTC 날짜로는 10-11이라 UTC로 자르면 주가 틀린다)
+    O3  10-14 12:00 KST(수)   3,000  U1  -> 주 10-12
+    O4  10-14 12:00 KST(수)   4,000  U2  -> 주 10-12
+    O5  2025-12-31 12:00 KST(수)  500  U3 -> 주 2025-12-29 (연말)
+    O6  2026-01-01 12:00 KST(목)  700  U4 -> 주 2025-12-29 (연초, 같은 주)
+    R1  O1을 10-19(다음 주)에 400원 환불 -> 원결제일 귀속이라 주 10-05의 환불금액
+    """
+    return combine(
+        sale("O1", "2026-10-11T14:59:00.000Z", "U1", 1), sale("O2", "2026-10-11T15:00:00.000Z", "U1", 2),
+        sale("O3", "2026-10-14T03:00:00.000Z", "U1", 3), sale("O4", "2026-10-14T03:00:00.000Z", "U2", 4),
+        sale("O5", "2025-12-31T03:00:00.000Z", "U3", 1, price=500), sale("O6", "2026-01-01T03:00:00.000Z", "U4", 1, price=700),
+        refund_of("O1", 400, "2026-10-19T03:00:00.000Z"))
+
+
+def compare_rows() -> dict:
+    """비교 기간 시나리오. 조회 기간 2026-10-08 ~ 2026-10-14 (7일), 이전 기간 10-01 ~ 10-07, 전년 동기 2025-10-08 ~ 2025-10-14.
+
+    현재  C1  10-07 15:30Z = 10-08 00:30 KST  A 의류  U1  2,000   (UTC 날짜로는 10-07이라 UTC로 자르면 이전 기간이 된다)
+          C2  10-14 12:00 KST            A 의류  U1  3,000
+          C3  10-14 12:00 KST            B 신발  U2  5,000
+          C4  10-15 12:00 KST            A 의류  U9  9,999   (기간 밖: 끝 다음 날)
+          R1  C1을 10-20에 1,000원 환불 -> 원결제일 10-08에 귀속
+    이전  P1  10-01 12:00 KST            A 의류  U1  4,000
+          P2  10-07 14:59Z = 10-07 23:59 KST A 의류 U3  1,000
+          P0  09-30 12:00 KST            A 의류  U8  7,777   (기간 밖: 시작 전날)
+    전년  Y1  2025-10-10 12:00 KST       A 의류  U1  20,000
+    """
+    return combine(
+        sale("C1", "2026-10-07T15:30:00.000Z", "U1", 2), sale("C2", "2026-10-14T03:00:00.000Z", "U1", 3),
+        sale("C3", "2026-10-14T03:00:00.000Z", "U2", 5, sku="SKU-004", channel="B"),
+        sale("C4", "2026-10-15T03:00:00.000Z", "U9", 1, price=9999),
+        refund_of("C1", 1000, "2026-10-20T03:00:00.000Z"),
+        sale("P1", "2026-10-01T03:00:00.000Z", "U1", 4), sale("P2", "2026-10-07T14:59:00.000Z", "U3", 1),
+        sale("P0", "2026-09-30T03:00:00.000Z", "U8", 1, price=7777),
+        sale("Y1", "2025-10-10T03:00:00.000Z", "U1", 20))
+
+
+RANGE = ("2026-10-08", "2026-10-14")
 
 
 class TestSpec(unittest.TestCase):
     def test_datasets_use_only_defined_dimensions_and_measures(self):
         for dataset in spec.DATASETS:
-            definition = metric_defs.DEFINITIONS[dataset["view"]]
             with self.subTest(dataset=dataset["name"]):
+                if dataset.get("compare"):
+                    continue
+                if dataset.get("kpi"):
+                    for measure, view in dataset["kpi"].items():
+                        self.assertIn(measure, {n for n, _ in metric_defs.DEFINITIONS[view]["measures"]})
+                    continue
+                definition = metric_defs.DEFINITIONS[dataset["view"]]
                 self.assertTrue(set(dataset["dims"]) <= {n for n, _ in definition["dimensions"]})
                 self.assertTrue(set(dataset["measures"]) <= {n for n, _ in definition["measures"]})
 
@@ -58,16 +149,19 @@ class TestSpec(unittest.TestCase):
         sql = spec.dataset_query(DATASETS["sales_by_channel"])
         self.assertTrue(sql.startswith("SELECT channel_name, MEASURE(total_sales) AS total_sales,"))
         self.assertTrue(sql.endswith("FROM commerce_poc.serving.sales_metrics WHERE payment_date BETWEEN :date_range.min "
-                                     "AND :date_range.max AND channel_name IN (:channels) GROUP BY ALL ORDER BY channel_name"))
-        self.assertNotIn("GROUP BY", spec.dataset_query(DATASETS["sales_kpi"]))
+                                     "AND :date_range.max AND channel_name IN (:channels) AND category IN (:categories) "
+                                     "GROUP BY ALL ORDER BY total_sales DESC, channel_name"))
         reason = spec.dataset_query(DATASETS["refund_by_reason"])
         self.assertIn("refund_amount_share", reason)
         self.assertIn("OVER ()", reason)
 
     def test_every_measure_in_a_query_is_wrapped_in_measure(self):
         for dataset in spec.DATASETS:
+            if dataset.get("compare"):
+                continue
             sql = spec.dataset_query(dataset)
-            for measure in dataset["measures"]:
+            measures = dataset["kpi"] if dataset.get("kpi") else dataset["measures"]
+            for measure in measures:
                 with self.subTest(dataset=dataset["name"], measure=measure):
                     self.assertIn(f"MEASURE({measure}) AS {measure}", sql)
 
@@ -91,29 +185,200 @@ class TestValues(unittest.TestCase):
         self.assertEqual((want["total_sales"], want["refund_amount"], want["net_sales"], want["paid_item_count"],
                           want["paying_customers"]), (sales["total_sales"], sales["refund_amount"], sales["net_sales"],
                                                       sales["item_count"], sales["paying_customers"]))
+        self.assertAlmostEqual(want["refund_ratio"], sales["refund_ratio"], places=12)
         refund = local_rows(self.con, DATASETS["refund_kpi"])[0]
         self.assertEqual((want["refund_amount"], want["refund_quantity"]), (refund["refund_amount"], refund["refund_quantity"]))
+        self.assertAlmostEqual(want["refund_ratio"], refund["refund_ratio"], places=12)
 
     def test_refund_share_sums_to_one(self):
         rows = local_rows(self.con, DATASETS["refund_by_reason"])
         self.assertAlmostEqual(1.0, sum(r["refund_amount_share"] for r in rows))
         self.assertEqual([("DEFECT", 105000)], [(r["refund_reason"], r["refund_amount"]) for r in rows])
 
-    def test_refund_share_splits_between_reasons(self):
+    def test_refund_share_splits_between_reasons_largest_first(self):
         rows = silver.rows_of(
             orders=[silver.order("O1")], order_items=[silver.item("O1", quantity=4, price=1000)],
             payments=[silver.payment("O1", amount=4000)],
             refunds=[silver.refund("O1", no=1, quantity=1, amount=1000, reason="DEFECT"),
                      silver.refund("O1", no=2, quantity=1, amount=3000, reason="CHANGE_OF_MIND")])
         con = g.gold_connection(rows)
-        result = {r["refund_reason"]: r["refund_amount_share"] for r in local_rows(con, DATASETS["refund_by_reason"])}
-        self.assertEqual({"DEFECT": 0.25, "CHANGE_OF_MIND": 0.75}, result)
+        result = local_rows(con, DATASETS["refund_by_reason"])
+        self.assertEqual([("CHANGE_OF_MIND", 0.75), ("DEFECT", 0.25)], [(r["refund_reason"], r["refund_amount_share"]) for r in result])
 
-    def test_sales_by_channel_has_three_rows_in_order(self):
-        rows = local_rows(self.con, DATASETS["sales_by_channel"])
+    def test_channel_net_share_sums_to_one_and_is_sorted_by_net_sales(self):
+        rows = local_rows(self.con, DATASETS["channel_net_share"])
         self.assertEqual(3, len(rows))
-        self.assertEqual([r["channel_name"] for r in rows], sorted(r["channel_name"] for r in rows))
+        self.assertAlmostEqual(1.0, sum(r["net_sales_share"] for r in rows), places=12)
+        want = {name: EXPECTED["per_channel"][ch]["net_sales"] for ch, name in dimensions.channel_rows()}
+        self.assertEqual(want, {r["channel_name"]: r["net_sales"] for r in rows})
+        self.assertEqual(sorted((r["net_sales"] for r in rows), reverse=True), [r["net_sales"] for r in rows])
+
+    def test_sorting_is_largest_first_and_ties_break_by_name(self):
+        rows = combine(sale("T1", "2026-10-12T03:00:00.000Z", "U1", 3, channel="A"),
+                       sale("T2", "2026-10-12T03:00:00.000Z", "U2", 3, channel="B"),
+                       sale("T3", "2026-10-12T03:00:00.000Z", "U3", 5, channel="C"))
+        con = g.gold_connection(rows)
+        for name in ("channel_net_share", "sales_by_channel"):
+            with self.subTest(dataset=name):
+                got = [r["channel_name"] for r in local_rows(con, DATASETS[name])]
+                self.assertEqual([ALL_CHANNELS[2], *sorted(ALL_CHANNELS[:2])], got)   # 5,000원이 먼저, 3,000원 동률은 이름순
+
+    def test_ratio_by_channel_is_sorted_by_ratio_not_by_amount(self):
+        """채널별 환불금액비율은 비율이 큰 순이다 (규모가 큰 채널이 위로 오지 않는다)."""
+        rows = combine(sale("T1", "2026-10-12T03:00:00.000Z", "U1", 10, channel="A"),      # 10,000원, 환불 1,000 -> 0.1
+                       refund_of("T1", 1000, "2026-10-13T03:00:00.000Z", channel="A"),
+                       sale("T2", "2026-10-12T03:00:00.000Z", "U2", 2, channel="B"),        # 2,000원, 환불 1,000 -> 0.5
+                       refund_of("T2", 1000, "2026-10-13T03:00:00.000Z", channel="B", user="U2"))
+        got = [(r["channel_name"], r["refund_ratio"]) for r in local_rows(g.gold_connection(rows), DATASETS["refund_ratio_by_channel"])]
+        self.assertEqual([(ALL_CHANNELS[1], 0.5), (ALL_CHANNELS[0], 0.1)], got)
+
+    def test_sales_by_method_and_category_are_sorted_largest_first(self):
+        for name, column in (("sales_by_method", "total_sales"), ("sales_by_category", "total_sales")):
+            rows = local_rows(self.con, DATASETS[name])
+            with self.subTest(dataset=name):
+                self.assertEqual(sorted((r[column] for r in rows), reverse=True), [r[column] for r in rows])
+                self.assertEqual(1266000, sum(r[column] for r in rows))
+
+    def test_sales_by_channel_table_has_five_measures(self):
+        rows = local_rows(self.con, DATASETS["sales_by_channel"])
+        self.assertEqual(["channel_name", "total_sales", "net_sales", "refund_ratio", "paying_customers", "average_order_value"],
+                         list(rows[0]))
         self.assertEqual(1266000, sum(r["total_sales"] for r in rows))
+
+
+class TestWeeks(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.con = g.gold_connection(weekly_rows())
+
+    def by_week(self, name="refund_ratio_by_week"):
+        return {r["payment_week"]: r for r in local_rows(self.con, DATASETS[name])}
+
+    def test_week_boundaries_start_on_monday_in_kst(self):
+        """일요일 23:59 KST는 앞 주, 월요일 00:00 KST는 새 주. 연말·연초는 같은 주(2025-12-29 시작)."""
+        weeks = {r["payment_week"]: r["total_sales"] for r in local_rows(self.con, DATASETS["sales_trend_by_channel_week"])}
+        self.assertEqual({"2025-12-29": 1200, "2026-10-05": 1000, "2026-10-12": 9000}, weeks)
+
+    def test_weeks_are_sorted_ascending(self):
+        weeks = [r["payment_week"] for r in local_rows(self.con, DATASETS["sales_trend_by_channel_week"])]
+        self.assertEqual(sorted(weeks), weeks)
+
+    def test_additive_measures_add_up_over_weeks(self):
+        rows = local_rows(self.con, DATASETS["sales_trend_by_channel_week"])
+        self.assertEqual(11200, sum(r["total_sales"] for r in rows))
+        self.assertEqual(11200, local_rows(self.con, DATASETS["sales_kpi"], date_range=WIDE)[0]["total_sales"])
+
+    def test_refund_ratio_is_recomputed_per_week_with_original_payment_week(self):
+        """환불은 원결제일의 주에 귀속된다: 환불이 10-19(다음 주)에 일어나도 주 10-05의 분자다. 주 10-05 = 400/1,000."""
+        weeks = self.by_week()
+        self.assertAlmostEqual(0.4, weeks["2026-10-05"]["refund_ratio"], places=12)
+        self.assertEqual(0.0, weeks["2026-10-12"]["refund_ratio"])
+        self.assertEqual(0.0, weeks["2025-12-29"]["refund_ratio"])
+        refunds = {r["payment_week"]: r["refund_amount"] for r in local_rows(self.con, DATASETS["refund_trend_by_week"])}
+        self.assertEqual({"2026-10-05": 400}, refunds)
+
+    def test_customers_and_order_value_are_recounted_per_week_not_summed_from_days(self):
+        """주 10-12: U1이 이틀(10-12, 10-14), U2가 하루 결제 -> 일별 고객 합은 3명이지만 주의 결제고객수는 2명, 객단가 9,000/2."""
+        con = self.con
+        daily = {r["payment_date"]: r["paying_customers"] for r in
+                 silver.run(con, g.plain_sql(metric_defs.SALES_METRICS, ["payment_date"], ["paying_customers"]))}
+        self.assertEqual(3, daily["2026-10-12"] + daily["2026-10-14"])
+        week = silver.run(con, g.plain_sql(metric_defs.SALES_METRICS, ["payment_week"], ["paying_customers", "average_order_value"],
+                                           "payment_week = '2026-10-12'"))[0]
+        self.assertEqual((2, 4500.0), (week["paying_customers"], week["average_order_value"]))
+
+    def test_weekly_trend_follows_channel_and_category_filters(self):
+        rows = combine(weekly_rows(), sale("S1", "2026-10-14T03:00:00.000Z", "U5", 1, sku="SKU-004", channel="B", price=800))
+        con = g.gold_connection(rows)
+        only_b = local_rows(con, DATASETS["sales_trend_by_channel_week"], channels=(B,))
+        self.assertEqual([("2026-10-12", B, 800)], [(r["payment_week"], r["channel_name"], r["total_sales"]) for r in only_b])
+        shoes = local_rows(con, DATASETS["sales_trend_by_channel_week"], categories=(SHOES,))
+        self.assertEqual([("2026-10-12", 800)], [(r["payment_week"], r["total_sales"]) for r in shoes])
+        clothes_only_week = local_rows(con, DATASETS["refund_ratio_by_week"], categories=(CLOTHES,), date_range=("2026-10-12", "2026-10-18"))
+        self.assertEqual([("2026-10-12", 0.0)], [(r["payment_week"], r["refund_ratio"]) for r in clothes_only_week])
+
+    def test_partial_first_week_is_cut_by_the_selected_range(self):
+        """조회 기간이 주 중간(수요일)에서 시작하면 첫 주는 그날 이후 값만 갖는다 (부분 주). 주 10-12 = O3+O4 = 7,000."""
+        weeks = {r["payment_week"]: r["total_sales"] for r in
+                 local_rows(self.con, DATASETS["sales_trend_by_channel_week"], date_range=("2026-10-14", "2026-10-31"))}
+        self.assertEqual({"2026-10-12": 7000}, weeks)
+
+
+class TestCompare(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.con = g.gold_connection(compare_rows())
+
+    def kpi(self, name="sales_kpi", **filters):
+        return local_rows(self.con, DATASETS[name], date_range=RANGE, **filters)[0]
+
+    def test_comparison_periods_are_shown_as_text(self):
+        row = local_rows(self.con, DATASETS["compare_period"], date_range=RANGE)[0]
+        self.assertEqual({"prev_period": "2026-10-01 ~ 2026-10-07", "yoy_period": "2025-10-08 ~ 2025-10-14"}, row)
+
+    def test_year_over_year_clamps_leap_day(self):
+        row = local_rows(self.con, DATASETS["compare_period"], date_range=("2024-02-29", "2024-03-01"))[0]
+        self.assertEqual("2023-02-28 ~ 2023-03-01", row["yoy_period"])
+        self.assertEqual("2024-02-27 ~ 2024-02-28", row["prev_period"])
+
+    def test_current_values_use_only_the_selected_range_in_kst(self):
+        row = self.kpi()
+        self.assertEqual((10000, 1000, 9000, 3, 2), (row["total_sales"], row["refund_amount"], row["net_sales"],
+                                                    row["item_count"], row["paying_customers"]))
+        self.assertAlmostEqual(0.1, row["refund_ratio"], places=12)
+        self.assertAlmostEqual(5000.0, row["average_order_value"], places=9)
+
+    def test_previous_period_delta_text(self):
+        """이전 기간(10-01~10-07): 총 5,000, 순 5,000, 고객 2명(U1,U3), 건수 2, 환불 0. 증감 = (현재 - 이전) / 이전."""
+        row = self.kpi()
+        self.assertEqual("▲ 100.0%", row["total_sales_prev"])           # 10,000 vs 5,000
+        self.assertEqual("▲ 80.0%", row["net_sales_prev"])              # 9,000 vs 5,000
+        self.assertEqual("0.0%", row["paying_customers_prev"])          # 2명 vs 2명: 방향 기호 없음
+        self.assertEqual("▲ 100.0%", row["average_order_value_prev"])   # 5,000 vs 2,500 (이전 기간에 다시 계산한 값)
+        self.assertEqual("▲ 50.0%", row["item_count_prev"])             # 3 vs 2
+        self.assertEqual("▲ 33.3%", row["unit_price_per_item_prev"])    # 3,333.33 vs 2,500
+        self.assertEqual("-", row["refund_ratio_prev"])                 # 이전 기간 환불금액비율이 0이라 증감률을 낼 수 없다
+        self.assertEqual("-", row["refund_amount_prev"])
+
+    def test_year_over_year_delta_text(self):
+        """전년 동기(2025-10-08~14): 총 20,000(Y1). 총판매금액 10,000 vs 20,000 = 50% 감소."""
+        row = self.kpi()
+        self.assertEqual("▼ 50.0%", row["total_sales_yoy"])
+        self.assertEqual("▼ 55.0%", row["net_sales_yoy"])             # 순판매금액 9,000 vs 20,000
+
+    def test_empty_comparison_period_says_no_results(self):
+        for filters in ({"channels": (B,)}, {"categories": (SHOES,)}):
+            row = self.kpi(**filters)
+            with self.subTest(filters=filters):
+                self.assertEqual((5000, 1), (row["total_sales"], row["paying_customers"]))
+                for column, value in row.items():
+                    if column.endswith(("_prev", "_yoy")):
+                        self.assertEqual("실적이 없습니다.", value, column)
+
+    def test_customers_are_recounted_inside_each_period_for_the_selection(self):
+        """자사몰만: 현재 고객 1명(U1)이 이전 기간 2명 대비 50% 감소, 객단가는 5,000 vs 2,500."""
+        row = self.kpi(channels=(A,))
+        self.assertEqual((5000, 1), (row["total_sales"], row["paying_customers"]))
+        self.assertEqual("0.0%", row["total_sales_prev"])               # 5,000 vs 5,000
+        self.assertEqual("▼ 50.0%", row["paying_customers_prev"])
+        self.assertEqual("▲ 100.0%", row["average_order_value_prev"])
+
+    def test_refund_kpi_attributes_refunds_to_the_original_payment_date(self):
+        """C1(10-08 결제)의 환불은 10-20에 일어났지만 조회 기간(10-08~14)의 환불이다. 환불금액비율은 sales_metrics 값(1,000/10,000)이다."""
+        row = self.kpi("refund_kpi")
+        self.assertEqual((1000, 1), (row["refund_amount"], row["refund_quantity"]))
+        self.assertAlmostEqual(0.1, row["refund_ratio"], places=12)
+        self.assertEqual(("-", "-", "-"), (row["refund_amount_prev"], row["refund_quantity_prev"], row["refund_ratio_prev"]))
+
+    def test_refund_kpi_without_sales_in_comparison_period_says_no_results(self):
+        row = self.kpi("refund_kpi", channels=(B,))
+        self.assertEqual("실적이 없습니다.", row["refund_amount_yoy"])
+
+    def test_range_edges_include_both_end_days(self):
+        one_day = local_rows(self.con, DATASETS["sales_kpi"], date_range=("2026-10-08", "2026-10-08"))[0]
+        self.assertEqual(2000, one_day["total_sales"])            # C1만 (KST 10-08 00:30)
+        none = local_rows(self.con, DATASETS["sales_kpi"], date_range=("2026-10-09", "2026-10-13"))[0]
+        self.assertEqual((None, 0), (none["total_sales"], none["item_count"]))
 
 
 class TestFilters(unittest.TestCase):
@@ -121,22 +386,24 @@ class TestFilters(unittest.TestCase):
     def setUpClass(cls):
         cls.con = g.gold_connection(silver.fixture_rows())
 
-    def test_every_dataset_query_applies_both_filters(self):
+    def test_every_dataset_query_applies_the_filters(self):
         for dataset in spec.DATASETS:
             sql = spec.dataset_query(dataset)
+            params = {"date_range"} if dataset.get("compare") else {"date_range", "channels", "categories"}
             with self.subTest(dataset=dataset["name"]):
-                self.assertIn(":date_range.min", sql)
-                self.assertIn(":date_range.max", sql)
-                self.assertIn(":channels", sql)
-                self.assertLess(sql.index("WHERE"), sql.index("GROUP BY") if "GROUP BY" in sql else len(sql))
+                self.assertEqual(params, {f["param"] for f in spec.FILTERS if spec.uses_parameter(dataset, f["param"])})
+                if not dataset.get("compare"):
+                    self.assertEqual(sql.count("WHERE") , sql.count(":channels"))   # 지표를 조회하는 곳마다 같은 WHERE가 걸린다
 
     def test_filter_dimensions_exist_in_both_views(self):
         for definition in metric_defs.DEFINITIONS.values():
             names = {n for n, _ in definition["dimensions"]}
             self.assertTrue({f["dimension"] for f in spec.FILTERS} <= names, definition["name"])
 
-    def test_channel_names_match_dimension_table(self):
+    def test_filter_options_match_dimension_tables(self):
         self.assertEqual([name for _, name in dimensions.channel_rows()], spec.CHANNEL_NAMES)
+        self.assertEqual(sorted({category for _, _, category in dimensions.product_rows(g.SKUS)}), sorted(spec.CATEGORIES))
+        self.assertEqual(set(spec.CHANNEL_NAMES), set(spec.CHANNEL_COLORS))
 
     def test_single_channel_filter_gives_that_channels_expected_values(self):
         for channel, name in dimensions.channel_rows():
@@ -156,6 +423,16 @@ class TestFilters(unittest.TestCase):
         self.assertAlmostEqual(sales / customers, row["average_order_value"], places=9)
         self.assertAlmostEqual((a["refund_amount"] + b["refund_amount"]) / sales, row["refund_ratio"], places=12)
 
+    def test_category_filter_recomputes_customer_metrics(self):
+        """카테고리 하나만 고르면 결제고객수·객단가가 그 카테고리 안에서 다시 계산된다 (카테고리별 값의 합과 다르다)."""
+        total = local_rows(self.con, DATASETS["sales_kpi"])[0]
+        parts = [local_rows(self.con, DATASETS["sales_kpi"], categories=(c,))[0] for c in ALL_CATEGORIES]
+        self.assertEqual(total["total_sales"], sum(p["total_sales"] or 0 for p in parts))
+        self.assertGreater(sum(p["paying_customers"] for p in parts), total["paying_customers"])
+        for part in parts:
+            if part["paying_customers"]:
+                self.assertAlmostEqual(part["total_sales"] / part["paying_customers"], part["average_order_value"], places=9)
+
     def test_date_range_includes_the_edge_days_and_excludes_others(self):
         day = local_rows(self.con, DATASETS["sales_kpi"], date_range=("2026-10-12", "2026-10-12"))[0]
         self.assertEqual(1266000, day["total_sales"])
@@ -167,9 +444,9 @@ class TestFilters(unittest.TestCase):
     def test_refund_datasets_follow_the_same_filters(self):
         self.assertEqual(105000, local_rows(self.con, DATASETS["refund_kpi"], date_range=("2026-10-12", "2026-10-12"))[0]["refund_amount"])
         self.assertEqual([], local_rows(self.con, DATASETS["refund_by_reason"], date_range=("2026-10-13", "2026-10-13")))
-        only_a = local_rows(self.con, DATASETS["refund_by_channel"], channels=(ALL_CHANNELS[0],))
-        self.assertEqual([(ALL_CHANNELS[0], EXPECTED["per_channel"]["A"]["refund_amount"])],
-                         [(r["channel_name"], r["refund_amount"]) for r in only_a])
+        only_a = local_rows(self.con, DATASETS["refund_ratio_by_channel"], channels=(ALL_CHANNELS[0],))
+        self.assertEqual([ALL_CHANNELS[0]], [r["channel_name"] for r in only_a])
+        self.assertAlmostEqual(EXPECTED["per_channel"]["A"]["refund_ratio"], only_a[0]["refund_ratio"], places=12)
 
     def test_refund_share_is_recomputed_over_the_filtered_rows(self):
         rows = silver.rows_of(
@@ -232,54 +509,100 @@ class TestJson(unittest.TestCase):
             with self.subTest(page=page, widget=widget["name"]):
                 self.assertTrue(used and used <= fields, (used, fields))
 
-    def test_global_filter_page_has_both_filters_bound_to_every_metric_dataset(self):
+    def test_global_filter_page_binds_each_filter_to_the_datasets_that_use_it(self):
         pages = [p for p in DASHBOARD["pages"] if is_filter_page(p)]
         self.assertEqual(1, len(pages))
-        metric_ids = {build_dashboard.dataset_id(d["name"]) for d in spec.DATASETS}
         by_param = {}
         for item in pages[0]["layout"]:
             fields = item["widget"]["spec"]["encodings"]["fields"]
             queries = {q["name"]: q["query"] for q in item["widget"]["queries"]}
             bound = [f for f in fields if "parameterName" in f]
-            self.assertEqual({f["parameterName"] for f in bound}.__len__(), 1)
+            self.assertEqual(1, len({f["parameterName"] for f in bound}))
             for f in bound:
                 self.assertEqual(f["parameterName"], queries[f["queryName"]]["parameters"][0]["keyword"])
             by_param[bound[0]["parameterName"]] = ({queries[f["queryName"]]["datasetName"] for f in bound},
                                                    item["widget"]["spec"]["widgetType"])
-        self.assertEqual({"date_range": (metric_ids, "filter-date-range-picker"),
-                          "channels": (metric_ids, "filter-multi-select")}, by_param)
+        want = {f["param"]: ({build_dashboard.dataset_id(d["name"]) for d in spec.DATASETS if spec.uses_parameter(d, f["param"])},
+                             {"date_range": "filter-date-range-picker", "multi_select": "filter-multi-select"}[f["kind"]])
+                for f in spec.FILTERS}
+        self.assertEqual(want, by_param)
+        self.assertEqual({"channels", "categories", "date_range"}, set(by_param))
 
-    def test_channel_filter_offers_the_dimension_values_as_options(self):
-        item = next(i for i in next(p for p in DASHBOARD["pages"] if is_filter_page(p))["layout"]
-                    if i["widget"]["spec"]["widgetType"] == "filter-multi-select")
-        options = [f for f in item["widget"]["spec"]["encodings"]["fields"] if "fieldName" in f]
-        self.assertEqual(["channel_name"], [f["fieldName"] for f in options])
-        query = next(q for q in item["widget"]["queries"] if q["name"] == options[0]["queryName"])["query"]
-        self.assertEqual(build_dashboard.dataset_id("channel_options"), query["datasetName"])
+    def test_option_datasets_offer_the_dimension_values(self):
+        items = [i for i in next(p for p in DASHBOARD["pages"] if is_filter_page(p))["layout"]
+                 if i["widget"]["spec"]["widgetType"] == "filter-multi-select"]
+        self.assertEqual({"channel_name", "category"},
+                         {f["fieldName"] for i in items for f in i["widget"]["spec"]["encodings"]["fields"] if "fieldName" in f})
+        for item in items:
+            options = [f for f in item["widget"]["spec"]["encodings"]["fields"] if "fieldName" in f][0]
+            query = next(q for q in item["widget"]["queries"] if q["name"] == options["queryName"])["query"]
+            flt = next(f for f in spec.FILTERS if f["dimension"] == options["fieldName"])
+            self.assertEqual(build_dashboard.dataset_id(flt["options"]), query["datasetName"])
 
-    def test_datasets_declare_both_parameters_with_defaults(self):
+    def test_datasets_declare_only_the_parameters_they_use_with_defaults(self):
+        options = {o["name"] for o in spec.OPTION_DATASETS}
         for dataset in DASHBOARD["datasets"]:
-            if dataset["displayName"] in {o["name"] for o in spec.OPTION_DATASETS}:
+            if dataset["displayName"] in options:
                 self.assertNotIn("parameters", dataset)
                 continue
             by_key = {p["keyword"]: p for p in dataset["parameters"]}
+            used = {f["param"] for f in spec.FILTERS if spec.uses_parameter(DATASETS[dataset["displayName"]], f["param"])}
             with self.subTest(dataset=dataset["displayName"]):
-                self.assertEqual({"date_range", "channels"}, set(by_key))
+                self.assertEqual(used, set(by_key))
                 self.assertEqual("RANGE", by_key["date_range"]["complexType"])
-                self.assertEqual("MULTI", by_key["channels"]["complexType"])
-                self.assertEqual(spec.CHANNEL_NAMES, [v["value"] for v in by_key["channels"]["defaultSelection"]["values"]["values"]])
+                self.assertEqual(("now-30d/d", "now/d"), (by_key["date_range"]["defaultSelection"]["range"]["min"]["value"],
+                                                          by_key["date_range"]["defaultSelection"]["range"]["max"]["value"]))
+                if "channels" in by_key:
+                    self.assertEqual(spec.CHANNEL_NAMES, [v["value"] for v in by_key["channels"]["defaultSelection"]["values"]["values"]])
+                    self.assertEqual(spec.CATEGORIES, [v["value"] for v in by_key["categories"]["defaultSelection"]["values"]["values"]])
 
     def test_global_filter_page_has_one_widget_per_filter(self):
         """위젯 위치(격자·겹침)는 아래 테스트가 필터 페이지를 포함한 모든 페이지에 검사한다."""
         page = next(p for p in DASHBOARD["pages"] if is_filter_page(p))
         self.assertEqual(len(spec.FILTERS), len(page["layout"]))
 
-    def test_bars_never_plot_non_additive_measures(self):
+    def test_non_additive_measures_are_plotted_only_one_row_per_mark(self):
+        """비가산 지표(비율 등)는 막대·선의 SUM이 행들을 더하지 않도록 데이터셋이 막대·선 하나당 한 행을 낼 때만 쓴다."""
         non_additive = {"refund_ratio", "unit_price_per_item", "paying_customers", "average_order_value", "refund_amount_share"}
         for page in spec.PAGES:
             for widget in page["widgets"]:
+                if widget["kind"] in ("bar", "line") and non_additive & set(widget["y_fields"]):
+                    dims = set(DATASETS[widget["dataset"]]["dims"])
+                    self.assertEqual({widget["x_field"], *([widget["color_field"]] if widget.get("color_field") else [])},
+                                     dims, widget["title"])
+
+    def test_horizontal_bars_are_sorted_largest_first(self):
+        for page in spec.PAGES:
+            for widget in page["widgets"]:
                 if widget["kind"] == "bar":
-                    self.assertFalse(non_additive & set(widget["y_fields"]), widget["title"])
+                    with self.subTest(widget=widget["title"]):
+                        self.assertTrue(widget["horizontal"])
+                        order = DATASETS[widget["dataset"]]["order"]
+                        self.assertRegex(order, rf"^{widget['y_fields'][0]} DESC, {widget['x_field']}$")
+
+    def test_trends_are_weekly_lines(self):
+        lines = [w for p in spec.PAGES for w in p["widgets"] if w["kind"] == "line"]
+        self.assertEqual(3, len(lines))
+        for widget in lines:
+            self.assertEqual("payment_week", widget["x_field"])
+            self.assertEqual(f"payment_week", DATASETS[widget["dataset"]]["order"].split(",")[0])
+
+    def test_channel_colors_are_fixed_for_channel_series(self):
+        for page, item in widgets(DASHBOARD):
+            encodings = item["widget"]["spec"]["encodings"]
+            if "color" in encodings:
+                mappings = {m["value"]: m["color"] for m in encodings["color"]["scale"]["mappings"]}
+                self.assertEqual({"자사몰": "#2a78d6", "종합 오픈마켓": "#eb6834", "스포츠 전문몰": "#1baf7a"}, mappings)
+                self.assertEqual("channel_name", encodings["color"]["fieldName"])
+
+    def test_deltas_use_symbols_not_status_colors(self):
+        """증감은 기호와 숫자만 쓴다: 증감 문장 SQL에 색 지정이 없고 위젯 spec에도 색 지정이 없다."""
+        text = spec.delta_text("a", "b", "c")
+        self.assertIn("▲", text)
+        self.assertIn("▼", text)
+        for _, item in widgets(DASHBOARD):
+            if "_prev" in json.dumps(item["widget"]["queries"]) or "_yoy" in json.dumps(item["widget"]["queries"]):
+                self.assertNotIn("color", json.dumps(item["widget"]["spec"]))
 
     def test_layout_fits_grid_without_overlap(self):
         for page in DASHBOARD["pages"]:
@@ -292,27 +615,39 @@ class TestJson(unittest.TestCase):
                              or a["y"] + a["height"] <= b["y"] or b["y"] + b["height"] <= a["y"])
                     self.assertTrue(apart, (page["displayName"], a, b))
 
+    def test_kpi_layout_has_three_large_and_five_small_cards_on_sales_and_three_on_refund(self):
+        def values(page, width):
+            return [w["value"] for w in next(p for p in spec.PAGES if p["name"] == page)["widgets"]
+                    if w["kind"] == "counter" and not w["value"].endswith(("_prev", "_yoy")) and "period" not in w["value"]
+                    and w["height"] == width]
+        self.assertEqual(["total_sales", "net_sales", "refund_ratio"], values("sales", 3))
+        self.assertEqual({"paying_customers", "average_order_value", "item_count", "unit_price_per_item", "refund_amount"},
+                         set(values("sales", 2)))
+        self.assertEqual(["refund_amount", "refund_quantity", "refund_ratio"], values("refund", 3))
+        # 전년 동기 대비는 큰 카드에만 있다
+        yoy = [w["value"] for p in spec.PAGES for w in p["widgets"] if w["value" if "value" in w else "kind"].__str__().endswith("_yoy")]
+        self.assertEqual({"total_sales_yoy", "net_sales_yoy", "refund_ratio_yoy", "refund_amount_yoy", "refund_quantity_yoy"}, set(yoy))
+
     def test_all_spec_6_5_sales_measures_are_shown_as_kpi(self):
-        shown = {w["value"] for p in spec.PAGES for w in p["widgets"] if w["kind"] == "counter"}
+        shown = {w["value"] for p in spec.PAGES for w in p["widgets"]
+                 if w["kind"] == "counter" and not w["value"].endswith(("_prev", "_yoy")) and "period" not in w["value"]}
         self.assertEqual({n for n, _ in metric_defs.SALES_METRICS["measures"]} | {"refund_quantity"}, shown)
 
     def test_checked_in_file_matches_definition(self):
         raw = build_dashboard.DEFAULT_PATH.read_bytes()
         self.assertFalse(raw.startswith(b"\xef\xbb\xbf"))
-        self.assertEqual(build_dashboard.build_dashboard(filters=False), json.loads(raw.decode("utf-8")))
+        self.assertEqual(build_dashboard.build_dashboard(), json.loads(raw.decode("utf-8")))
         self.assertIn(b"\r\n", raw)
 
-    def test_unfiltered_dashboard_has_no_parameters_where_or_filter_page(self):
-        """저장소의 파일은 필터를 붙이기 전의 첫 대시보드다: 데이터셋 9개, 판매·환불 페이지 2개."""
-        plain = build_dashboard.build_dashboard(filters=False)
-        self.assertEqual(9, len(plain["datasets"]))
-        self.assertEqual(["판매", "환불"], [p["displayName"] for p in plain["pages"]])
-        for dataset in plain["datasets"]:
-            with self.subTest(dataset=dataset["displayName"]):
-                self.assertNotIn("parameters", dataset)
-                self.assertNotIn("WHERE", dataset["queryLines"][0])
-                self.assertNotIn(":date_range", dataset["queryLines"][0])
 
+    def test_screen_guide_contains_every_dataset_query(self):
+        """화면 구성 가이드의 SQL이 정의와 같다. 정의를 바꾸면 가이드를 다시 만들어야 한다 (scratch 생성 스크립트가 아니라 이 테스트가 어긋남을 알린다)."""
+        guide = (build_dashboard.DEFAULT_PATH.parent / "화면_구성_가이드.md").read_text(encoding="utf-8").replace("\r\n", "\n")
+        for dataset in spec.DATASETS:
+            with self.subTest(dataset=dataset["name"]):
+                self.assertIn(spec.dataset_query(dataset), guide)
+        for option in spec.OPTION_DATASETS:
+            self.assertIn(option["query"], guide)
 
 if __name__ == "__main__":
     unittest.main()

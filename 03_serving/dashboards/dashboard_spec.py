@@ -1,30 +1,43 @@
-"""대시보드에 무엇을 보여줄지 정의한다: 데이터셋(조회)과 위젯(KPI·차트·표). Lakeview JSON 모양은 build_dashboard.py가 만든다.
+"""대시보드에 무엇을 보여줄지 정의한다: 데이터셋(조회)과 위젯(KPI·차트·표). Lakeview JSON 모양은 build_dashboard.py가 만든다. (plans/05 카드 5-F·5-G)
 
-[데이터셋] 이름, Metric View, 분석 기준(dims), 지표(measures), 정렬, 구성비 열(share_of)
-  쿼리는 Metric View를 MEASURE()로 조회한다: SELECT 기준열, MEASURE(지표) AS 지표 FROM 뷰 GROUP BY ALL ORDER BY ...
-  share_of를 주면 "그 열 / 전체 합" 열(<열>_share)을 더한다 (사유별 비중). 구성비는 비가산이라 지표가 아니라 조회 단계에서 계산한다.
-[위젯] kind = counter(KPI 숫자 하나) | bar(막대) | table(표). 위치(x, y, width, height)는 6칸 격자 기준이다.
-[페이지] 판매(sales_*) / 환불(refund_*)
-[필터] 기간(결제일)과 채널을 모든 페이지 맨 위(전역 필터)에 둔다. 필터는 데이터셋 쿼리의 매개변수(:date_range, :channels)다.
-  결과 열에 필터 기준을 넣어 화면에서 거르는 방식은 쓰지 않는다: 이미 집계된 행을 다시 더하면 결제고객수·객단가·비율이 틀린다.
-  매개변수는 Metric View 조회의 WHERE에 들어가므로 선택한 범위에서 지표가 다시 계산된다. 환불 지표의 기간도 원결제일 기준이다 (event_spec 6.3).
+[필터] 채널·카테고리(다중 선택)와 조회 기간(결제일 범위)을 모든 페이지 맨 위(전역 필터)에 둔다. 데이터셋 쿼리의 매개변수
+  (:channels, :categories, :date_range.min/.max)이며 Metric View 조회의 WHERE에 들어간다. 이미 집계된 행을 화면에서 다시 거르면
+  결제고객수·객단가·비율이 틀리므로 쓰지 않는다. 환불 지표의 기간도 원결제일 기준이다 (event_spec 6.3).
+[비교 기간] 쿼리 안에서 조회 기간으로 계산한다 (Databricks 매개변수는 다른 매개변수로 만들 수 없다).
+  이전 기간 = 바로 앞의 같은 길이 구간, 전년 동기 = 1년 전 같은 구간. KPI 증감은 기간마다 Metric View를 다시 조회해 비교한다.
+[데이터셋] 세 가지다.
+  일반   이름, Metric View, 분석 기준(dims), 지표(measures), 정렬(order), 구성비 열(share_of). 쿼리는 MEASURE()로 조회한다.
+  KPI    "kpi": {지표: 뷰}. 한 행에 현재값 `지표`와 증감 문장 `지표_prev`(이전 기간 대비), `지표_yoy`(전년 대비)를 낸다.
+         비교 기간에 상품결제건수가 0이면 증감 대신 "실적이 없습니다."다. 상품결제건수는 sales_metrics에서 읽는다.
+  비교   compare_period: 이전 기간·전년 동기를 "시작 ~ 끝" 문장으로 보여 주는 읽기 전용 값.
+[위젯] kind = counter(숫자·문장 하나) | bar(막대, horizontal이면 가로) | line(선) | table(표). 위치는 6칸 격자 기준이다.
+[로컬 검증] 쿼리가 쓰는 date_sub·datediff·add_months·weekday·date_format·format_number는 Spark 함수다. 로컬 테스트는 같은 이름의
+  함수를 sqlite에 등록해 같은 문장을 실행한다 (등록한 함수의 동작이 Spark와 같은지는 Databricks에서만 확인된다).
 """
 
 SERVING = "commerce_poc.serving"
 GOLD = "commerce_poc.gold"
 
-# 채널 필터의 선택지와 기본값. 값은 dim_channel.channel_name과 같아야 한다 (테스트가 대조한다).
+# 필터 선택지와 기본값. 값은 Dimension 테이블과 같아야 한다 (테스트가 대조한다).
 CHANNEL_NAMES = ["자사몰", "종합 오픈마켓", "스포츠 전문몰"]
-DEFAULT_DATE_RANGE = ("now-1y/d", "now/d")   # Lakeview 상대 날짜 표현: 1년 전 ~ 오늘
+CATEGORIES = ["가방", "신발", "액세서리", "의류", "캠핑·등산 장비"]
+DEFAULT_DATE_RANGE = ("now-30d/d", "now/d")   # Lakeview 상대 날짜 표현: 30일 전 ~ 오늘
 
-# 필터: param = 매개변수 이름, dimension = Metric View 분석 기준. 선택지 데이터셋(options)은 채널 필터만 쓴다.
+# 채널 색은 모든 차트에서 고정한다 (색약 시뮬레이션 검증을 통과한 값; 청록은 대비 경고가 있어 범례·직접 라벨이 필요하다).
+CHANNEL_COLORS = {"자사몰": "#2a78d6", "종합 오픈마켓": "#eb6834", "스포츠 전문몰": "#1baf7a"}
+NEUTRAL_COLOR = "#5b6573"   # 채널이 아닌 단일 계열
+
+# 필터: param = 매개변수 이름, dimension = Metric View 분석 기준. options = 선택지 데이터셋(날짜 범위는 없다).
 FILTERS = [
-    {"param": "date_range", "kind": "date_range", "title": "기간 (결제일)", "dimension": "payment_date"},
     {"param": "channels", "kind": "multi_select", "title": "채널", "dimension": "channel_name", "options": "channel_options"},
+    {"param": "categories", "kind": "multi_select", "title": "카테고리", "dimension": "category", "options": "category_options"},
+    {"param": "date_range", "kind": "date_range", "title": "조회 기간 (결제일)", "dimension": "payment_date"},
 ]
 OPTION_DATASETS = [
     {"name": "channel_options", "query": f"SELECT channel_name FROM {GOLD}.dim_channel ORDER BY channel_name",
      "columns": ["channel_name"]},
+    {"name": "category_options", "query": f"SELECT DISTINCT category FROM {GOLD}.dim_product ORDER BY category",
+     "columns": ["category"]},
 ]
 
 # 열 이름 -> 화면에 보일 이름
@@ -32,68 +45,144 @@ LABELS = {
     "total_sales": "총판매금액", "refund_amount": "환불금액", "net_sales": "순판매금액", "refund_ratio": "환불금액비율",
     "item_count": "상품결제건수", "unit_price_per_item": "상품결제단가", "paying_customers": "결제고객수",
     "average_order_value": "객단가", "refund_quantity": "환불수량", "refund_amount_share": "환불금액 비중",
-    "payment_date": "결제일", "channel_name": "채널", "method_name": "결제수단", "category": "카테고리",
-    "refund_reason": "환불 사유", "refund_type": "환불 유형",
+    "net_sales_share": "순판매금액 비중", "payment_week": "결제주(월요일)", "channel_name": "채널",
+    "method_name": "결제수단", "category": "카테고리", "refund_reason": "환불 사유", "refund_type": "환불 유형",
+    "prev_period": "이전 기간", "yoy_period": "전년 동기",
 }
 
-SALES_ALL = ["total_sales", "refund_amount", "net_sales", "refund_ratio", "item_count", "unit_price_per_item",
-             "paying_customers", "average_order_value"]
+SALES_KPI = {m: "sales_metrics" for m in ("total_sales", "net_sales", "refund_ratio", "paying_customers",
+                                         "average_order_value", "item_count", "unit_price_per_item", "refund_amount")}
+REFUND_KPI = {"refund_amount": "refund_metrics", "refund_quantity": "refund_metrics", "refund_ratio": "sales_metrics"}
 
 DATASETS = [
-    {"name": "sales_kpi", "view": "sales_metrics", "dims": [], "measures": SALES_ALL},
-    {"name": "sales_by_date", "view": "sales_metrics", "dims": ["payment_date"],
-     "measures": ["total_sales", "refund_amount", "net_sales"], "order": "payment_date"},
-    {"name": "sales_by_channel", "view": "sales_metrics", "dims": ["channel_name"], "measures": SALES_ALL,
-     "order": "channel_name"},
-    {"name": "sales_by_method", "view": "sales_metrics", "dims": ["method_name"],
-     "measures": ["total_sales", "item_count"], "order": "method_name"},
-    {"name": "sales_by_category", "view": "sales_metrics", "dims": ["category"],
-     "measures": ["total_sales", "refund_amount", "net_sales"], "order": "category"},
-    {"name": "refund_kpi", "view": "refund_metrics", "dims": [], "measures": ["refund_amount", "refund_quantity"]},
-    {"name": "refund_by_date", "view": "refund_metrics", "dims": ["payment_date"],
-     "measures": ["refund_amount", "refund_quantity"], "order": "payment_date"},
+    {"name": "compare_period", "compare": True},
+    {"name": "sales_kpi", "kpi": SALES_KPI},
+    {"name": "refund_kpi", "kpi": REFUND_KPI},
+    {"name": "sales_trend_by_channel_week", "view": "sales_metrics", "dims": ["payment_week", "channel_name"],
+     "measures": ["total_sales"], "order": "payment_week, channel_name"},
+    {"name": "refund_ratio_by_week", "view": "sales_metrics", "dims": ["payment_week"], "measures": ["refund_ratio"],
+     "order": "payment_week"},
+    {"name": "channel_net_share", "view": "sales_metrics", "dims": ["channel_name"], "measures": ["net_sales"],
+     "share_of": "net_sales", "order": "net_sales DESC, channel_name"},
+    {"name": "sales_by_method", "view": "sales_metrics", "dims": ["method_name"], "measures": ["total_sales"],
+     "order": "total_sales DESC, method_name"},
+    {"name": "sales_by_category", "view": "sales_metrics", "dims": ["category"], "measures": ["total_sales"],
+     "order": "total_sales DESC, category"},
+    {"name": "refund_ratio_by_channel", "view": "sales_metrics", "dims": ["channel_name"], "measures": ["refund_ratio"],
+     "order": "refund_ratio DESC, channel_name"},
+    {"name": "sales_by_channel", "view": "sales_metrics", "dims": ["channel_name"],
+     "measures": ["total_sales", "net_sales", "refund_ratio", "paying_customers", "average_order_value"],
+     "order": "total_sales DESC, channel_name"},
+    {"name": "refund_trend_by_week", "view": "refund_metrics", "dims": ["payment_week"], "measures": ["refund_amount"],
+     "order": "payment_week"},
     {"name": "refund_by_reason", "view": "refund_metrics", "dims": ["refund_reason"],
-     "measures": ["refund_amount", "refund_quantity"], "share_of": "refund_amount", "order": "refund_reason"},
-    {"name": "refund_by_channel", "view": "refund_metrics", "dims": ["channel_name"],
-     "measures": ["refund_amount", "refund_quantity"], "order": "channel_name"},
+     "measures": ["refund_amount", "refund_quantity"], "share_of": "refund_amount",
+     "order": "refund_amount DESC, refund_reason"},
 ]
 
-# 위젯: dataset, kind, title, 보여줄 열(counter는 1개, bar는 x와 y 목록, table은 열 목록), 위치
+
+def _kpi_group(dataset: dict, title_measure: str, **place) -> list:
+    """큰 카드: 값 + 이전 기간 대비 + 전년 동기 대비. place = x, y."""
+    x, y = place["x"], place["y"]
+    note = " (낮을수록 좋은 지표입니다)" if title_measure == "refund_ratio" else ""
+    return [
+        {"dataset": dataset, "kind": "counter", "title": f"{LABELS[title_measure]}{note}", "value": title_measure,
+         "x": x, "y": y, "width": 2, "height": 3},
+        {"dataset": dataset, "kind": "counter", "title": f"{LABELS[title_measure]} · 이전 기간 대비",
+         "value": f"{title_measure}_prev", "x": x, "y": y + 3, "width": 1, "height": 2},
+        {"dataset": dataset, "kind": "counter", "title": f"{LABELS[title_measure]} · 전년 동기 대비",
+         "value": f"{title_measure}_yoy", "x": x + 1, "y": y + 3, "width": 1, "height": 2},
+    ]
+
+
+def _small_card(dataset: str, measure: str, x: int, y: int, width: int = 1) -> list:
+    """작은 카드: 값 + 이전 기간 대비 (전년 동기는 큰 카드에만 보여 준다)."""
+    return [{"dataset": dataset, "kind": "counter", "title": LABELS[measure], "value": measure,
+             "x": x, "y": y, "width": width, "height": 2},
+            {"dataset": dataset, "kind": "counter", "title": f"{LABELS[measure]} · 이전 기간 대비",
+             "value": f"{measure}_prev", "x": x, "y": y + 2, "width": width, "height": 2}]
+
+
+def _compare_row() -> list:
+    return [{"dataset": "compare_period", "kind": "counter", "title": "비교 기간 · 이전 기간", "value": "prev_period",
+             "x": 0, "y": 0, "width": 3, "height": 2},
+            {"dataset": "compare_period", "kind": "counter", "title": "비교 기간 · 전년 동기", "value": "yoy_period",
+             "x": 3, "y": 0, "width": 3, "height": 2}]
+
+
+# 위젯: dataset, kind, title, 보여줄 열(counter는 value 하나, bar·line은 x_field와 y_fields, table은 columns), 위치.
+# 선택 항목: color_field(계열 열, 채널이면 고정 색), horizontal(가로 막대).
 PAGES = [
     {"name": "sales", "title": "판매", "widgets": [
-        *[{"dataset": "sales_kpi", "kind": "counter", "title": LABELS[m], "value": m,
-           "x": 2 * (i % 3), "y": 3 * (i // 3), "width": 2, "height": 3} for i, m in enumerate(SALES_ALL)],
-        {"dataset": "sales_by_date", "kind": "bar", "title": "결제일별 판매·환불", "x_field": "payment_date",
-         "y_fields": ["total_sales", "refund_amount"], "x": 0, "y": 9, "width": 6, "height": 5},
-        {"dataset": "sales_by_channel", "kind": "table", "title": "채널별 지표", "columns": ["channel_name", *SALES_ALL],
-         "x": 0, "y": 14, "width": 6, "height": 4},
+        *_compare_row(),
+        *_kpi_group("sales_kpi", "total_sales", x=0, y=2),
+        *_kpi_group("sales_kpi", "net_sales", x=2, y=2),
+        *_kpi_group("sales_kpi", "refund_ratio", x=4, y=2),
+        *_small_card("sales_kpi", "paying_customers", 0, 7),
+        *_small_card("sales_kpi", "average_order_value", 1, 7),
+        *_small_card("sales_kpi", "item_count", 2, 7),
+        *_small_card("sales_kpi", "unit_price_per_item", 3, 7),
+        *_small_card("sales_kpi", "refund_amount", 4, 7, width=2),
+        {"dataset": "sales_trend_by_channel_week", "kind": "line",
+         "title": "채널별 총판매금액 추이 (주별, 첫·마지막 주는 조회 기간 경계로 부분 주일 수 있음)",
+         "x_field": "payment_week", "y_fields": ["total_sales"], "color_field": "channel_name",
+         "x": 0, "y": 11, "width": 6, "height": 6},
+        {"dataset": "channel_net_share", "kind": "bar", "title": "채널별 순판매금액 비중", "x_field": "channel_name",
+         "y_fields": ["net_sales"], "horizontal": True, "x": 0, "y": 17, "width": 3, "height": 6},
+        {"dataset": "refund_ratio_by_week", "kind": "line",
+         "title": "환불금액비율 추이 (주별, 첫·마지막 주는 부분 주일 수 있음)", "x_field": "payment_week",
+         "y_fields": ["refund_ratio"], "x": 3, "y": 17, "width": 3, "height": 6},
         {"dataset": "sales_by_method", "kind": "bar", "title": "결제수단별 총판매금액", "x_field": "method_name",
-         "y_fields": ["total_sales"], "x": 0, "y": 18, "width": 3, "height": 5},
+         "y_fields": ["total_sales"], "horizontal": True, "x": 0, "y": 23, "width": 3, "height": 6},
         {"dataset": "sales_by_category", "kind": "bar", "title": "카테고리별 총판매금액", "x_field": "category",
-         "y_fields": ["total_sales"], "x": 3, "y": 18, "width": 3, "height": 5},
+         "y_fields": ["total_sales"], "horizontal": True, "x": 3, "y": 23, "width": 3, "height": 6},
+        {"dataset": "sales_by_channel", "kind": "table", "title": "채널별 지표",
+         "columns": ["channel_name", "total_sales", "net_sales", "refund_ratio", "paying_customers", "average_order_value"],
+         "x": 0, "y": 29, "width": 6, "height": 4},
     ]},
     {"name": "refund", "title": "환불", "widgets": [
-        {"dataset": "refund_kpi", "kind": "counter", "title": "환불금액", "value": "refund_amount",
-         "x": 0, "y": 0, "width": 3, "height": 3},
-        {"dataset": "refund_kpi", "kind": "counter", "title": "환불수량", "value": "refund_quantity",
-         "x": 3, "y": 0, "width": 3, "height": 3},
-        {"dataset": "refund_by_reason", "kind": "table", "title": "사유별 환불",
-         "columns": ["refund_reason", "refund_amount", "refund_quantity", "refund_amount_share"],
-         "x": 0, "y": 3, "width": 3, "height": 5},
+        *_compare_row(),
+        *_kpi_group("refund_kpi", "refund_amount", x=0, y=2),
+        *_kpi_group("refund_kpi", "refund_quantity", x=2, y=2),
+        *_kpi_group("refund_kpi", "refund_ratio", x=4, y=2),
         {"dataset": "refund_by_reason", "kind": "bar", "title": "사유별 환불금액", "x_field": "refund_reason",
-         "y_fields": ["refund_amount"], "x": 3, "y": 3, "width": 3, "height": 5},
-        {"dataset": "refund_by_date", "kind": "bar", "title": "결제일별 환불금액 (원결제일 귀속)", "x_field": "payment_date",
-         "y_fields": ["refund_amount"], "x": 0, "y": 8, "width": 3, "height": 5},
-        {"dataset": "refund_by_channel", "kind": "bar", "title": "채널별 환불금액", "x_field": "channel_name",
-         "y_fields": ["refund_amount"], "x": 3, "y": 8, "width": 3, "height": 5},
+         "y_fields": ["refund_amount"], "horizontal": True, "x": 0, "y": 7, "width": 3, "height": 6},
+        {"dataset": "refund_ratio_by_channel", "kind": "bar", "title": "채널별 환불금액비율", "x_field": "channel_name",
+         "y_fields": ["refund_ratio"], "horizontal": True, "x": 3, "y": 7, "width": 3, "height": 6},
+        {"dataset": "refund_trend_by_week", "kind": "line",
+         "title": "결제일별 환불금액 추이 (원결제일 귀속, 주별, 최근 주는 환불 접수 중이라 낮을 수 있음)",
+         "x_field": "payment_week", "y_fields": ["refund_amount"], "x": 0, "y": 13, "width": 6, "height": 6},
+        {"dataset": "refund_by_reason", "kind": "table", "title": "사유별 환불 상세",
+         "columns": ["refund_reason", "refund_amount", "refund_quantity", "refund_amount_share"],
+         "x": 0, "y": 19, "width": 6, "height": 5},
     ]},
 ]
+
+# ── 쿼리 만들기 ──────────────────────────────────────────────────────────────────
+MIN, MAX = ":date_range.min", ":date_range.max"
+# 기간 이름 -> (시작 식, 끝 식). 모든 데이터셋과 "비교 기간" 표시가 같은 식을 쓴다.
+PERIODS = {
+    "cur": (MIN, MAX),
+    "prev": (f"date_sub({MIN}, datediff({MAX}, {MIN}) + 1)", f"date_sub({MIN}, 1)"),
+    "yoy": (f"add_months({MIN}, -12)", f"add_months({MAX}, -12)"),
+}
 
 
 def dataset_columns(dataset: dict) -> list:
     """데이터셋 쿼리가 돌려주는 열 이름 순서."""
+    if dataset.get("compare"):
+        return ["prev_period", "yoy_period"]
+    if dataset.get("kpi"):
+        measures = list(dataset["kpi"])
+        return [*measures, *(f"{m}_{suffix}" for m in measures for suffix in ("prev", "yoy"))]
     share = [f"{dataset['share_of']}_share"] if dataset.get("share_of") else []
     return [*dataset["dims"], *dataset["measures"], *share]
+
+
+def where_clause(period: str = "cur") -> str:
+    """필터를 거는 WHERE 조건 (매개변수 표기). period가 prev·yoy면 기간만 비교 기간으로 바뀌고 채널·카테고리는 같다."""
+    low, high = PERIODS[period]
+    return (f"payment_date BETWEEN {low} AND {high} AND channel_name IN (:channels) AND category IN (:categories)")
 
 
 def wrap_query(dataset: dict, inner_sql: str) -> str:
@@ -108,19 +197,64 @@ def wrap_query(dataset: dict, inner_sql: str) -> str:
     return sql
 
 
-def where_clause() -> str:
-    """필터를 거는 WHERE 조건 (매개변수 표기). 모든 데이터셋이 같은 조건을 쓴다."""
-    return "payment_date BETWEEN :date_range.min AND :date_range.max AND channel_name IN (:channels)"
+def delta_text(current: str, compare: str, compare_items: str) -> str:
+    """증감 문장. 비교 기간에 결제 건수가 없으면 "실적이 없습니다.", 비교값이 없거나 0이면 "-", 아니면 "▲ 12.3%" 같은 방향 기호와 숫자.
+    상태 색(좋음/나쁨)은 쓰지 않는다. 정수끼리 나누는 오차를 피하려 100.0을 먼저 곱한다."""
+    return (f"CASE WHEN {compare_items} IS NULL OR {compare_items} = 0 THEN '실적이 없습니다.' "
+            f"WHEN {current} IS NULL OR {compare} IS NULL OR {compare} = 0 THEN '-' "
+            f"ELSE (CASE WHEN {current} > {compare} THEN '▲ ' WHEN {current} < {compare} THEN '▼ ' ELSE '' END) "
+            f"|| format_number(ABS({current} - {compare}) * 100.0 / ABS({compare}), 1) || '%' END")
 
 
-def dataset_query(dataset: dict, serving: str = SERVING, filters: bool = True) -> str:
-    """Databricks에서 실행할 데이터셋 쿼리 (Metric View를 MEASURE()로 조회하고 필터를 WHERE로 건다).
+def kpi_query(dataset: dict, select) -> str:
+    """KPI 쿼리: 기간(현재·이전·전년)과 뷰마다 지표를 조회하는 CTE를 만들고, 한 행으로 합쳐 증감 문장을 붙인다.
 
-    filters=False면 WHERE 없이 전체 범위를 조회한다 (필터를 붙이기 전의 첫 대시보드 모양)."""
-    columns = [*dataset["dims"], *(f"MEASURE({m}) AS {m}" for m in dataset["measures"])]
-    inner = f"SELECT {', '.join(columns)} FROM {serving}.{dataset['view']}"
-    if filters:
-        inner += f" WHERE {where_clause()}"
-    if dataset["dims"]:
-        inner += " GROUP BY ALL"
-    return wrap_query(dataset, inner)
+    select(view, measures, where)는 지표 조회 문장을 돌려주는 함수다. Databricks는 MEASURE() 조회를, 로컬 테스트는 같은 정의의 일반 SQL을 넘긴다.
+    상품결제건수(sales_metrics)는 비교 기간의 실적 유무 판단에 항상 함께 조회한다."""
+    groups = {}
+    for measure, view in dataset["kpi"].items():
+        groups.setdefault(view, []).append(measure)
+    sales = groups.setdefault("sales_metrics", [])
+    if "item_count" not in sales:
+        sales.append("item_count")
+    source = {m: v for v, ms in groups.items() for m in ms}   # 지표 -> 뷰
+    ctes = [f"{p}_{view} AS ({select(view, ms, where_clause(p))})" for p in PERIODS for view, ms in groups.items()]
+    columns = [f"cur_{source[m]}.{m} AS {m}" for m in dataset["kpi"]]
+    for m in dataset["kpi"]:
+        for period, suffix in (("prev", "prev"), ("yoy", "yoy")):
+            columns.append(delta_text(f"cur_{source[m]}.{m}", f"{period}_{source[m]}.{m}",
+                                      f"{period}_sales_metrics.item_count") + f" AS {m}_{suffix}")
+    tables = " CROSS JOIN ".join(f"{p}_{view}" for p in PERIODS for view in groups)
+    return f"WITH {', '.join(ctes)} SELECT {', '.join(columns)} FROM {tables}"
+
+
+def compare_query() -> str:
+    """이전 기간·전년 동기를 "시작 ~ 끝" 문장으로 돌려준다 (KPI와 같은 PERIODS 식)."""
+    def text(period):
+        low, high = PERIODS[period]
+        return (f"date_format({low}, 'yyyy-MM-dd') || ' ~ ' || date_format({high}, 'yyyy-MM-dd')")
+    return f"SELECT {text('prev')} AS prev_period, {text('yoy')} AS yoy_period"
+
+
+def spark_select(serving: str = SERVING):
+    """Databricks용 select 함수: Metric View를 MEASURE()로 조회한다."""
+    def select(view: str, measures: list, where: str, dims: list = ()) -> str:
+        columns = [*dims, *(f"MEASURE({m}) AS {m}" for m in measures)]
+        sql = f"SELECT {', '.join(columns)} FROM {serving}.{view} WHERE {where}"
+        return sql + (" GROUP BY ALL" if dims else "")
+    return select
+
+
+def dataset_query(dataset: dict, serving: str = SERVING) -> str:
+    """Databricks에서 실행할 데이터셋 쿼리."""
+    if dataset.get("compare"):
+        return compare_query()
+    select = spark_select(serving)
+    if dataset.get("kpi"):
+        return kpi_query(dataset, select)
+    return wrap_query(dataset, select(dataset["view"], dataset["measures"], where_clause(), dataset["dims"]))
+
+
+def uses_parameter(dataset: dict, param: str) -> bool:
+    """데이터셋 쿼리가 매개변수를 쓰는지 (쓰지 않는 매개변수는 선언하지 않는다)."""
+    return f":{param}" in dataset_query(dataset)
