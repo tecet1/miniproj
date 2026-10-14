@@ -299,8 +299,19 @@ class TestJson(unittest.TestCase):
     def test_checked_in_file_matches_definition(self):
         raw = build_dashboard.DEFAULT_PATH.read_bytes()
         self.assertFalse(raw.startswith(b"\xef\xbb\xbf"))
-        self.assertEqual(DASHBOARD, json.loads(raw.decode("utf-8")))
+        self.assertEqual(build_dashboard.build_dashboard(filters=False), json.loads(raw.decode("utf-8")))
         self.assertIn(b"\r\n", raw)
+
+    def test_unfiltered_dashboard_has_no_parameters_where_or_filter_page(self):
+        """저장소의 파일은 필터를 붙이기 전의 첫 대시보드다: 데이터셋 9개, 판매·환불 페이지 2개."""
+        plain = build_dashboard.build_dashboard(filters=False)
+        self.assertEqual(9, len(plain["datasets"]))
+        self.assertEqual(["판매", "환불"], [p["displayName"] for p in plain["pages"]])
+        for dataset in plain["datasets"]:
+            with self.subTest(dataset=dataset["displayName"]):
+                self.assertNotIn("parameters", dataset)
+                self.assertNotIn("WHERE", dataset["queryLines"][0])
+                self.assertNotIn(":date_range", dataset["queryLines"][0])
 
 
 if __name__ == "__main__":

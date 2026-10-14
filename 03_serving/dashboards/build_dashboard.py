@@ -1,9 +1,9 @@
 """dashboard_spec의 정의를 Lakeview 대시보드 JSON(.lvdash.json)으로 만든다.
 
-  build_dashboard()   정의 -> 대시보드 dict (datasets, pages)
-  write_dashboard()   dict -> 파일. 기본 위치는 이 폴더의 commerce_poc.lvdash.json
+  build_dashboard(filters)   정의 -> 대시보드 dict (datasets, pages). filters=False는 필터 없는 첫 대시보드, True는 기간·채널 필터 버전
+  write_dashboard()          dict -> 파일. 기본 위치는 이 폴더의 commerce_poc.lvdash.json (필터 없는 버전)
 실행: python 03_serving/dashboards/build_dashboard.py  (파일을 다시 만든다)
-Databricks에서 이 파일을 Git folder로 동기화하면 대시보드로 열린다. 위젯 모양은 Databricks에서 열려 확인했지만(사용자 보고), 전역 필터(매개변수 묶음)는 아직 열어 보지 않았다 (미검증). 쿼리와 열 이름의 일치, 위젯 위치 겹침 여부는 로컬 테스트로 확인한다.
+Databricks에서 이 파일을 Git folder로 동기화하면 대시보드로 열린다. 필터 없는 버전의 위젯 모양은 Databricks에서 열려 확인했다(사용자 보고, 이 파일의 데이터셋·페이지는 그때 내려받은 파일과 같다). 필터 버전은 열었을 때 끊긴다는 사용자 보고가 있어 저장소 파일로 쓰지 않는다. 쿼리와 열 이름의 일치, 위젯 위치 겹침 여부는 로컬 테스트로 확인한다.
 """
 import hashlib
 import json
@@ -40,9 +40,12 @@ def parameters() -> list:
     ]
 
 
-def dataset_json(dataset: dict) -> dict:
-    return {"name": dataset_id(dataset["name"]), "displayName": dataset["name"],
-            "queryLines": [dataset_query(dataset)], "parameters": parameters()}
+def dataset_json(dataset: dict, filters: bool = True) -> dict:
+    result = {"name": dataset_id(dataset["name"]), "displayName": dataset["name"],
+              "queryLines": [dataset_query(dataset, filters=filters)]}
+    if filters:
+        result["parameters"] = parameters()
+    return result
 
 
 def option_dataset_json(option: dict) -> dict:
@@ -121,17 +124,21 @@ def layout_item(page: str, index: int, widget: dict) -> dict:
     }
 
 
-def build_dashboard() -> dict:
-    """지표 데이터셋, 필터 선택지 데이터셋, 판매·환불 페이지, 전역 필터 페이지를 담은 대시보드 dict."""
+def build_dashboard(filters: bool = True) -> dict:
+    """지표 데이터셋, 필터 선택지 데이터셋, 판매·환불 페이지, 전역 필터 페이지를 담은 대시보드 dict.
+
+    filters=False면 필터 없는 첫 대시보드(데이터셋 9개, 페이지 2개)를 만든다."""
     pages = [{"name": short_id(f"page-{page['name']}"), "displayName": page["title"], "pageType": "PAGE_TYPE_CANVAS",
               "layout": [layout_item(page["name"], i, w) for i, w in enumerate(page["widgets"])]} for page in PAGES]
+    if not filters:
+        return {"datasets": [dataset_json(d, filters=False) for d in DATASETS], "pages": pages}
     datasets = [dataset_json(d) for d in DATASETS] + [option_dataset_json(o) for o in OPTION_DATASETS]
     return {"datasets": datasets, "pages": [*pages, filter_page()]}
 
 
-def write_dashboard(path=DEFAULT_PATH) -> Path:
-    """JSON을 UTF-8, CRLF(저장소 규칙)로 쓴다."""
-    text = json.dumps(build_dashboard(), ensure_ascii=False, indent=2).replace("\n", "\r\n")
+def write_dashboard(path=DEFAULT_PATH, filters: bool = False) -> Path:
+    """JSON을 UTF-8, CRLF(저장소 규칙)로 쓴다. 저장소의 파일은 필터 없는 첫 대시보드다 (필터 버전은 filters=True)."""
+    text = json.dumps(build_dashboard(filters), ensure_ascii=False, indent=2).replace("\n", "\r\n")
     Path(path).write_bytes(text.encode("utf-8"))
     return Path(path)
 

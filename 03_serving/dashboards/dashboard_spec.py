@@ -113,10 +113,14 @@ def where_clause() -> str:
     return "payment_date BETWEEN :date_range.min AND :date_range.max AND channel_name IN (:channels)"
 
 
-def dataset_query(dataset: dict, serving: str = SERVING) -> str:
-    """Databricks에서 실행할 데이터셋 쿼리 (Metric View를 MEASURE()로 조회하고 필터를 WHERE로 건다)."""
+def dataset_query(dataset: dict, serving: str = SERVING, filters: bool = True) -> str:
+    """Databricks에서 실행할 데이터셋 쿼리 (Metric View를 MEASURE()로 조회하고 필터를 WHERE로 건다).
+
+    filters=False면 WHERE 없이 전체 범위를 조회한다 (필터를 붙이기 전의 첫 대시보드 모양)."""
     columns = [*dataset["dims"], *(f"MEASURE({m}) AS {m}" for m in dataset["measures"])]
-    inner = f"SELECT {', '.join(columns)} FROM {serving}.{dataset['view']} WHERE {where_clause()}"
+    inner = f"SELECT {', '.join(columns)} FROM {serving}.{dataset['view']}"
+    if filters:
+        inner += f" WHERE {where_clause()}"
     if dataset["dims"]:
         inner += " GROUP BY ALL"
     return wrap_query(dataset, inner)
