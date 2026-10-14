@@ -6,7 +6,7 @@
 [기대값] expected.compute_expected(픽스처 시나리오 + 합성 시나리오) 한 번의 결과다. 이벤트 생성 모듈과 로직을 공유하지 않는다.
         이 기대값은 Bronze에 픽스처(Function 경로)와 덤프(직접 적재)가 모두 들어간 상태의 값이다.
 [ID] 이벤트 줄의 ID는 ids.NamedIds(seed)로 만든다. 같은 설정이면 바이트까지 같다. 픽스처는 읽기 쉬운 ID라 충돌하지 않는다.
-시나리오 생성은 synth_scenarios, 줄 만들기와 쓰기는 generate가 한다 (여기서는 이어 붙이기만 한다).
+시나리오 생성은 synth_scenarios(채널별 규모·성장이 다르다), 줄 만들기는 generate가 한다 (여기서는 이어 붙이기만 한다).
 """
 import argparse
 import json
@@ -28,23 +28,32 @@ DEFAULT_CONFIG = ROOT / "04_experiments" / "configs" / "dump.json"
 DEFAULT_RESULTS = ROOT / "04_experiments" / "results"
 
 
-def combined_expected(fixture_scenarios: list[dict], synthetic: list[dict], skus: dict[str, dict]) -> dict:
-    """픽스처 + 합성 시나리오의 독립 기대값. expected는 JSON을 읽은 그대로의 목록을 받으므로 sku를 목록으로 넘긴다."""
-    return expected.compute_expected(fixture_scenarios + synthetic, list(skus.values()))
+def combined_expected(fixture_scenarios: list[dict], synthetic: dict[str, list[dict]], skus: dict[str, dict]) -> dict:
+    """픽스처(세 채널 공통) + 채널별 합성 시나리오의 독립 기대값. expected는 sku를 목록으로 받는다."""
+    return expected.compute_expected(fixture_scenarios, list(skus.values()), channel_scenarios=synthetic)
 
 
-def build_dump(config: dict, skus: dict[str, dict], fixture_scenarios: list[dict]) -> tuple[list[dict], dict]:
-    """(합성 시나리오, 합친 기대값). 합성 시나리오는 검증을 통과해야 한다."""
-    synthetic = synth_scenarios.build_scenarios(skus, config)
-    scenario_validator.validate_scenarios(synthetic, skus)
+def build_dump(config: dict, skus: dict[str, dict], fixture_scenarios: list[dict]) -> tuple[dict[str, list[dict]], dict]:
+    """({채널: 합성 시나리오}, 합친 기대값). 채널마다 규모와 성장이 다르며, 시나리오는 검증을 통과해야 한다."""
+    synthetic = synth_scenarios.build_channel_scenarios(skus, config)
+    for scenarios in synthetic.values():
+        scenario_validator.validate_scenarios(scenarios, skus)
     return synthetic, combined_expected(fixture_scenarios, synthetic, skus)
 
 
 def write_dump(results_dir, config: dict, skus: dict[str, dict], fixture_scenarios: list[dict]) -> dict:
-    """results_dir/dump/{A,B,C}/events.jsonl 과 results_dir/expected_dump.json 을 쓰고 기대값을 돌려준다."""
+    """results_dir/dump/{A,B,C}/events.jsonl 과 results_dir/expected_dump.json 을 쓰고 기대값을 돌려준다.
+
+    줄 형식은 generate.write_fixtures와 같다 (UTF-8, LF, 마지막 줄도 줄바꿈으로 끝낸다).
+    """
     results_dir = Path(results_dir)
     synthetic, combined = build_dump(config, skus, fixture_scenarios)
-    generate.write_fixtures(results_dir / "dump", synthetic, skus, NamedIds(config["seed"]))
+    ids = NamedIds(config["seed"])
+    for channel, scenarios in synthetic.items():
+        path = results_dir / "dump" / channel / "events.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        text = "\n".join(generate.build_lines(channel, scenarios, skus, ids)) + "\n"
+        path.write_text(text, encoding="utf-8", newline="\n")
     text = json.dumps(combined, ensure_ascii=False, indent=2)
     (results_dir / "expected_dump.json").write_text(text + "\n", encoding="utf-8", newline="\n")
     return combined

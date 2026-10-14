@@ -4,6 +4,7 @@
 [출력] 하루에 시나리오 하나(id "L{YYYYMMDD}"), 주문 번호는 그날 안에서 시각 순서로 1부터. 같은 시드·설정이면 항상 같은 결과다.
 [모형] 근거와 파라미터는 04_experiments/docs/기업_프로필과_성장_모형.md
   - 월 수준: 시작 기준월을 1.0으로 두고 매달 exp(mu + e)를 곱한다. e ~ N(0, sigma^2), e는 (시드, 달)로 고정한다.
+    shock_correlation(기본 0)만큼의 분산은 시장 전체 충격(shared_seed)이라 채널이 함께 움직이고, 나머지는 채널 고유 충격이다 (총 분산은 sigma^2).
   - 그날의 평균 주문 수 = D0 x 월 수준 x 월 계절 계수 x 요일 계수 x 판촉일 계수.
     요일 계수와 판촉일 계수는 평균이 1이 되도록 나눠서 D0와 월 수준이 규모를 정하게 한다.
   - 그날의 주문 수: 평균이 위 값인 음이항분포(감마-포아송). 분산이 평균보다 크다.
@@ -27,7 +28,6 @@ PAYMENT_METHODS = (("CARD", 55), ("EASY_PAY", 25), ("BANK_TRANSFER", 12), ("VIRT
 REASONS = (("CHANGE_OF_MIND", 40), ("DEFECT", 25), ("WRONG_ITEM", 15), ("DELAY", 20))
 FAIL_REASONS = (("LIMIT_EXCEEDED", 40), ("CARD_DECLINED", 40), ("TIMEOUT", 20))
 ORDER_KINDS = (("PAID", 70), ("RETRY_PAID", 8), ("FAILED_ONLY", 3), ("CANCELLED", 5), ("REFUNDED", 14))
-HOUR_WEIGHTS = (1, 1, 1, 1, 1, 1, 2, 3, 4, 5, 6, 6, 7, 6, 6, 6, 6, 7, 8, 9, 11, 12, 10, 5)  # 0~23시
 LINE_COUNTS = ((1, 70), (2, 25), (3, 5))       # 주문 상품 행 수. 평균 주문 금액 8만 원 안팎이 되도록 정했다
 QUANTITIES = ((1, 75), (2, 22), (3, 3))        # 행별 수량
 DISCOUNT_RATE = 0.15
@@ -61,9 +61,13 @@ def month_levels(config: dict, last_index: int) -> list[float]:
     mu = ln(1 + 연 성장률) / 12. 충격 e는 (시드, 달 번호)로 고정되어 종료일과 무관하다.
     """
     mu = math.log(1 + config["growth_annual"]) / 12
+    rho = config.get("shock_correlation", 0.0)
+    market_seed = config.get("shared_seed", config["seed"])
     levels, log_level = [1.0], 0.0
     for index in range(1, last_index + 1):
-        shock = random.Random(f"{config['seed']}-shock-{index}").gauss(0, config["sigma_monthly"])
+        own = random.Random(f"{config['seed']}-shock-{index}").gauss(0, 1)
+        market = random.Random(f"{market_seed}-market-shock-{index}").gauss(0, 1)
+        shock = config["sigma_monthly"] * (math.sqrt(rho) * market + math.sqrt(1 - rho) * own)
         log_level += mu + shock
         levels.append(math.exp(log_level))
     return levels
@@ -89,6 +93,14 @@ def promo_expectation(config: dict, year: int, month: int) -> float:
     low_mult, high_mult = config["promo"]["multiplier"]
     share = (low + high) / 2 / days_in_month(year, month)
     return 1 + share * ((low_mult + high_mult) / 2 - 1)
+
+
+def customer_pools(config: dict) -> list[int]:
+    """기간의 날짜별 고객 풀 크기. 시작 고객 수 x 월 수준이라 주문량과 같은 경로로 늘어난다 (가입자가 늘어야 주문이 는다는 가정)."""
+    start, end = date.fromisoformat(config["start"]), date.fromisoformat(config["end"])
+    levels = month_levels(config, month_index(end, config))
+    return [round(config["customers_start"] * levels[month_index(start + timedelta(days=offset), config)])
+            for offset in range((end - start).days + 1)]
 
 
 def daily_mean_orders(config: dict) -> list[tuple[date, float]]:
@@ -128,9 +140,9 @@ def draw_count(rng: random.Random, mean: float, dispersion: float) -> int:
 
 
 # ── 주문 하나 ─────────────────────────────────────────────────────────────────────────
-def start_second(rng: random.Random, latest: int) -> int:
-    """하루 안의 주문 시작 초(KST 00:00 기준). 시간대 가중치로 시를 고른다. latest 이하로 자른다."""
-    hour = rng.choices(range(24), weights=HOUR_WEIGHTS)[0]
+def start_second(rng: random.Random, latest: int, hour_weights: list) -> int:
+    """하루 안의 주문 시작 초(KST 00:00 기준). 시간대 가중치(configs의 hour_weights, 0~23시)로 시를 고른다. latest 이하로 자른다."""
+    hour = rng.choices(range(24), weights=hour_weights)[0]
     return min(hour * 3600 + rng.randrange(3600), latest)
 
 
@@ -189,32 +201,66 @@ def mark_duplicates(rng: random.Random, events: list[dict], rate: float) -> None
             event["send_count"] = 2
 
 
-def make_order(rng: random.Random, order_no: int, skus: dict, config: dict,
+def refund_factor(config: dict, day: date) -> float:
+    """그 달의 환불 주문 비중 배수. exp(N(0, refund_sigma)) 이며 (시드, 연, 월)로 고정된다 (달마다 환불율이 흔들린다)."""
+    shock = random.Random(f"{config['seed']}-refund-{day.year}-{day.month}").gauss(0, config["refund_sigma"])
+    return math.exp(shock)
+
+
+def order_kinds(config: dict, day: date) -> tuple:
+    """ORDER_KINDS에서 환불 가중치만 그 달의 배수로 바꾼 목록."""
+    factor = refund_factor(config, day)
+    return tuple((kind, weight * factor if kind == "REFUNDED" else weight) for kind, weight in ORDER_KINDS)
+
+
+def make_order(rng: random.Random, order_no: int, skus: dict, config: dict, kinds: tuple, customers: int,
                scenario_start: datetime, day_offset: int, limit: datetime) -> dict:
-    """주문 하나. day_offset은 시나리오 시작(그날 00:00 KST)부터 주문 시작까지의 초, limit은 데이터 끝 시각."""
+    """주문 하나. day_offset은 시나리오 시작(그날 00:00 KST)부터 주문 시작까지의 초, limit은 데이터 끝 시각.
+
+    customers는 그날의 고객 풀 크기다. 번호가 작을수록 오래된 단골이라 자주 산다 (제곱 쏠림).
+    """
     items = make_items(rng, skus)
     room_sec = int((limit - scenario_start).total_seconds()) - day_offset
-    events = make_events(rng, pick(rng, ORDER_KINDS), items, room_sec)
+    events = make_events(rng, pick(rng, kinds), items, room_sec)
     mark_duplicates(rng, events, config["duplicate_rate"])
-    user = f"U{int(rng.random() ** 2 * 500) + 1:04d}"
+    user = f"U{int(rng.random() ** 2 * customers) + 1:06d}"
     return {"order_no": order_no, "user_id": user, "start_offset_sec": day_offset, "items": items, "events": events}
 
 
-def make_day(skus: dict, config: dict, day: date, mean: float, limit: datetime) -> dict:
+def make_day(skus: dict, config: dict, day: date, mean: float, customers: int, limit: datetime) -> dict:
     """하루치 시나리오. 그날의 난수는 (시드, 날짜)로 정해지고 평균 주문 수만 모형에서 받는다."""
     rng = random.Random(f"{config['seed']}-{day.isoformat()}")
     scenario_start = datetime(day.year, day.month, day.day, tzinfo=KST)
     # 데이터 끝 직전 주문은 10분 안에 결제가 끝나도록 마지막 시각을 제한한다
     latest = min(86399, int((limit - scenario_start).total_seconds()) - 600)
     count = draw_count(rng, mean, config["nb_dispersion"])
-    starts = sorted(start_second(rng, latest) for _ in range(count))
-    orders = [make_order(rng, no, skus, config, scenario_start, offset, limit) for no, offset in enumerate(starts, 1)]
+    starts = sorted(start_second(rng, latest, config["hour_weights"]) for _ in range(count))
+    kinds = order_kinds(config, day)
+    orders = [make_order(rng, no, skus, config, kinds, customers, scenario_start, offset, limit) for no, offset in enumerate(starts, 1)]
     return {"id": f"L{day:%Y%m%d}", "title": f"장기 데이터 {day.isoformat()}", "start_kst": scenario_start.isoformat(),
             "orders": orders}
+
+
+def channel_config(config: dict, channel: str) -> dict:
+    """한 채널의 단일 흐름 설정. 최상위 base_orders_per_day, customers_start는 '채널 평균'이고 채널 값은 비중(share)을 곱해 만든다.
+
+    비중의 합이 1이면 세 채널 합은 평균 x 3이다. 성장률은 채널 값을 쓰고, 시드에 채널을 붙여 채널마다 독립된 월 충격·판촉일·주문을 얻는다.
+    """
+    channels = config["channels"]
+    spec, scale = channels[channel], len(channels) * channels[channel]["share"]
+    return dict(config, seed=f"{config['seed']}-{channel}", shared_seed=config["seed"], growth_annual=spec["growth_annual"],
+                base_orders_per_day=config["base_orders_per_day"] * scale,
+                customers_start=round(config["customers_start"] * scale))
+
+
+def build_channel_scenarios(skus: dict, config: dict) -> dict[str, list[dict]]:
+    """{채널: 365일 시나리오 목록}. 채널마다 규모와 성장이 다르다 (config의 channels)."""
+    return {channel: build_scenarios(skus, channel_config(config, channel)) for channel in config["channels"]}
 
 
 def build_scenarios(skus: dict, config: dict) -> list[dict]:
     """config의 start~end(양 끝 포함) 날짜마다 시나리오 하나씩, 날짜 순서로 돌려준다."""
     end = date.fromisoformat(config["end"])
     limit = datetime(end.year, end.month, end.day, tzinfo=KST) + timedelta(days=1)
-    return [make_day(skus, config, day, mean, limit) for day, mean in daily_mean_orders(config)]
+    return [make_day(skus, config, day, mean, customers, limit)
+            for (day, mean), customers in zip(daily_mean_orders(config), customer_pools(config))]

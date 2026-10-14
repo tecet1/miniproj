@@ -263,6 +263,124 @@ class TestBusinessRules(unittest.TestCase):
                     self.assertLess(when, limit, scenario["id"])
 
 
+class TestCustomersHoursAndRefunds(unittest.TestCase):
+    """고객 수 증가, 시간대 분포, 월별 환불율 변동 (2026-10-14 승인 방향)."""
+
+    @staticmethod
+    def month_of(scenario):
+        return scenario["start_kst"][:7]
+
+    def test_customer_pool_grows_with_the_monthly_level(self):
+        pools = synth.customer_pools(CONFIG)
+        self.assertEqual(CONFIG["customers_start"], pools[0])
+        self.assertGreater(pools[-1], pools[0] * 1.05)
+
+    def test_customer_ids_stay_inside_the_pool_of_the_day(self):
+        pools = {d.isoformat(): n for (d, _), n in zip(synth.daily_mean_orders(CONFIG), synth.customer_pools(CONFIG))}
+        for scenario, order in ORDERS[::50]:
+            self.assertLessEqual(int(order["user_id"][1:]), pools[scenario["start_kst"][:10]])
+
+    def test_customer_base_widens_over_the_year(self):
+        """고객 번호는 가입 순서다. 달의 상위 5% 번호(= 그 달 고객 풀의 크기를 보여 준다)가 해를 따라 커진다."""
+        by_month = {}
+        for scenario, order in ORDERS:
+            by_month.setdefault(self.month_of(scenario), []).append(int(order["user_id"][1:]))
+        p95 = {m: sorted(ids)[int(len(ids) * 0.95)] for m, ids in by_month.items()}
+        self.assertGreater(p95["2026-09"], p95["2025-11"] * 1.05)
+
+    def test_customers_are_realistic_in_number_and_buy_repeatedly(self):
+        users = Counter(order["user_id"] for _, order in ORDERS)
+        orders_per_customer = len(ORDERS) / len(users)
+        self.assertTrue(1.5 < orders_per_customer < 6, orders_per_customer)
+        self.assertGreater(len(users), 5000)
+
+    def test_order_start_hours_rise_from_9_peak_at_13_fall_to_5(self):
+        hours = Counter(int(o["start_offset_sec"] // 3600) for _, o in ORDERS)
+        counts = [hours[h] for h in range(24)]
+        self.assertEqual(13, counts.index(max(counts)))
+        self.assertEqual(5, counts.index(min(counts)))
+        self.assertTrue(all(counts[h] < counts[h + 1] for h in range(8, 13)), counts)      # 9시부터 오른다
+        self.assertTrue(all(counts[h] > counts[h + 1] for h in range(13, 23)), counts)      # 13시 뒤로 계속 준다
+        self.assertTrue(all(counts[h] > counts[h + 1] for h in range(21, 23)))             # 21시 이후는 더 가파르다
+        self.assertGreater(counts[13] / counts[21], 1.5)
+        self.assertLess((counts[13] - counts[21]) / 8, (counts[21] - counts[5]) / 8 * 2)   # 13~21시가 더 완만하다
+
+    def test_refund_factor_is_fixed_per_month_and_differs_between_months(self):
+        factors = {m: synth.refund_factor(CONFIG, date(2026, m, 1)) for m in range(1, 13)}
+        self.assertEqual(factors[3], synth.refund_factor(CONFIG, date(2026, 3, 20)))
+        self.assertGreater(len({round(f, 6) for f in factors.values()}), 10)
+
+    def test_monthly_refund_share_varies_and_follows_the_factor(self):
+        share, factor = {}, {}
+        for scenario in YEAR:
+            month = self.month_of(scenario)
+            orders = scenario["orders"]
+            refunded = sum(1 for o in orders if kind_of(o) == "REFUNDED")
+            total, count = share.get(month, (0, 0))
+            share[month] = (total + refunded, count + len(orders))
+            factor[month] = synth.refund_factor(CONFIG, date.fromisoformat(scenario["start_kst"][:10]))
+        rates = {m: r / n for m, (r, n) in share.items() if m not in ("2025-10", "2026-10")}   # 첫·끝 달은 일부만
+        self.assertGreater(max(rates.values()) / min(rates.values()), 1.2)
+        months = sorted(rates)
+        correlation = statistics.correlation([rates[m] for m in months], [factor[m] for m in months])
+        self.assertGreater(correlation, 0.8)
+
+
+class TestChannelStreams(unittest.TestCase):
+    """채널별 규모·성장 (2026-10-14 승인: A 20%/+30%, B 50%/+15%, C 30%/+40%)."""
+
+    def test_channel_config_scales_orders_and_customers_by_share(self):
+        n = len(CONFIG["channels"])
+        for channel, spec in CONFIG["channels"].items():
+            stream = synth.channel_config(CONFIG, channel)
+            self.assertAlmostEqual(CONFIG["base_orders_per_day"] * n * spec["share"], stream["base_orders_per_day"])
+            self.assertEqual(round(CONFIG["customers_start"] * n * spec["share"]), stream["customers_start"])
+            self.assertEqual(spec["growth_annual"], stream["growth_annual"])
+
+    def test_shares_sum_to_one(self):
+        self.assertAlmostEqual(1.0, sum(c["share"] for c in CONFIG["channels"].values()))
+
+    def test_total_start_volume_is_unchanged(self):
+        total = sum(synth.channel_config(CONFIG, c)["base_orders_per_day"] for c in CONFIG["channels"])
+        self.assertAlmostEqual(CONFIG["base_orders_per_day"] * len(CONFIG["channels"]), total)
+
+    def test_channels_use_independent_month_paths_and_their_own_growth(self):
+        paths = {c: synth.month_levels(synth.channel_config(CONFIG, c), 12) for c in CONFIG["channels"]}
+        self.assertNotEqual(paths["A"], paths["B"])
+        self.assertGreater(paths["C"][12], paths["B"][12])     # +40% vs +15%
+
+    def test_realized_channel_growth_follows_the_configured_rate(self):
+        for channel, spec in CONFIG["channels"].items():
+            steps = []
+            for seed in range(300):
+                stream = {k: v for k, v in synth.channel_config(CONFIG, channel).items() if k != "shared_seed"}
+                levels = synth.month_levels(dict(stream, seed=seed), 12)
+                steps += [math.log(levels[i] / levels[i - 1]) for i in range(1, 13)]
+            self.assertAlmostEqual(math.log(1 + spec["growth_annual"]) / 12, statistics.mean(steps), delta=0.001, msg=channel)
+
+    def test_channel_month_paths_move_together_but_not_identically(self):
+        paths = {c: synth.month_levels(synth.channel_config(CONFIG, c), 12) for c in CONFIG["channels"]}
+        steps = {c: [math.log(p[i] / p[i - 1]) for i in range(1, 13)] for c, p in paths.items()}
+        self.assertGreater(statistics.correlation(steps["A"], steps["B"]), 0.4)
+        self.assertNotEqual(steps["A"], steps["B"])
+        flat = dict(CONFIG, shock_correlation=0.0)
+        independent = {c: synth.month_levels(synth.channel_config(flat, c), 12) for c in CONFIG["channels"]}
+        self.assertNotEqual(paths["A"], independent["A"])
+
+    def test_total_shock_variance_does_not_depend_on_the_correlation(self):
+        for rho in (0.0, 0.8):
+            steps = []
+            for seed in range(300):
+                levels = synth.month_levels(dict(CONFIG, seed=seed, shock_correlation=rho), 12)
+                steps += [math.log(levels[i] / levels[i - 1]) for i in range(1, 13)]
+            self.assertAlmostEqual(CONFIG["sigma_monthly"], statistics.pstdev(steps), delta=0.002, msg=str(rho))
+
+    def test_same_config_gives_same_channel_scenarios_and_channels_differ(self):
+        first = synth.build_channel_scenarios(SKUS, CONFIG)
+        self.assertEqual(first, synth.build_channel_scenarios(SKUS, CONFIG))
+        self.assertNotEqual(first["A"][10]["orders"], first["C"][10]["orders"])
+
+
 class TestWithExistingGenerators(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

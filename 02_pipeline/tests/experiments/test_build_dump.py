@@ -12,6 +12,7 @@ sys.path[:0] = [str(ROOT / "04_experiments" / "src"), str(ROOT / "01_contracts" 
 import build_dump  # noqa: E402
 import expected  # noqa: E402
 import scenario_loader  # noqa: E402
+import synth_scenarios as synth  # noqa: E402
 
 CONTRACTS = ROOT / "01_contracts" / "contracts"
 FIXTURES = ROOT / "01_contracts" / "data_fixtures"
@@ -35,7 +36,7 @@ def shared_dump():
         combined = build_dump.write_dump(out.name, CONFIG, SKUS, FIXTURE_SCENARIOS)
         synthetic, _ = build_dump.build_dump(CONFIG, SKUS, FIXTURE_SCENARIOS)
         _SHARED.update(tmp=out, out=Path(out.name), combined=combined, synthetic=synthetic,
-                       dump_only=expected.compute_expected(synthetic, list(SKUS.values())))
+                       dump_only=expected.compute_expected([], list(SKUS.values()), channel_scenarios=synthetic))
     return _SHARED
 
 
@@ -71,7 +72,7 @@ class TestLineCounts(_Dump):
 
 class TestCombinedExpected(_Dump):
     def test_combined_is_one_compute_expected_call_over_fixtures_and_synthetic(self):
-        again = expected.compute_expected(FIXTURE_SCENARIOS + self.synthetic, list(SKUS.values()))
+        again = expected.compute_expected(FIXTURE_SCENARIOS, list(SKUS.values()), channel_scenarios=self.synthetic)
         self.assertEqual(again, self.combined)
 
     def test_combined_adds_up_fixture_and_dump_for_additive_counts(self):
@@ -83,10 +84,35 @@ class TestCombinedExpected(_Dump):
         self.assertEqual(0, self.dump_only["total"]["quarantine"])
         self.assertGreater(self.combined["total"]["quarantine"], 0)
 
-    def test_the_three_channels_have_equal_expected_values(self):
-        per_channel = self.combined["per_channel"]
-        self.assertEqual(per_channel["A"], per_channel["B"])
-        self.assertEqual(per_channel["A"], per_channel["C"])
+    def test_channels_differ_in_scale_with_the_configured_shares(self):
+        orders = {c: self.dump_only["per_channel"][c]["silver_orders"] for c in CHANNELS}
+        self.assertGreater(orders["B"], orders["C"])
+        self.assertGreater(orders["C"], orders["A"])
+        total = sum(orders.values())
+        for channel in CHANNELS:      # 해 평균 비중은 시작 비중에서 성장 차이만큼 움직인다 (A 20->21%, B 50->46%, C 30->34%)
+            self.assertAlmostEqual(CONFIG["channels"][channel]["share"], orders[channel] / total, delta=0.04, msg=channel)
+
+    def test_each_channel_matches_the_model_expectation_of_its_own_stream(self):
+        for channel in CHANNELS:
+            stream = synth.channel_config(CONFIG, channel)
+            model = sum(mean for _, mean in synth.daily_mean_orders(stream))
+            self.assertAlmostEqual(1.0, self.dump_only["per_channel"][channel]["silver_orders"] / model, delta=0.04, msg=channel)
+
+    def test_channel_scenarios_are_different_streams(self):
+        self.assertNotEqual(self.synthetic["A"][100]["orders"], self.synthetic["B"][100]["orders"])
+
+    def test_channel_mix_shifts_toward_the_faster_growing_channel(self):
+        def share(channel, months):
+            count = lambda c: sum(len(s["orders"]) for s in self.synthetic[c] if s["start_kst"][:7] in months)
+            return count(channel) / sum(count(c) for c in CHANNELS)
+        early, late = ("2025-11", "2025-12", "2026-01"), ("2026-07", "2026-08", "2026-09")
+        self.assertGreater(share("C", late), share("C", early))
+        self.assertLess(share("B", late), share("B", early))
+
+    def test_fixture_only_expected_still_equal_across_channels(self):
+        fixture_only = expected.compute_expected(FIXTURE_SCENARIOS, list(SKUS.values()))["per_channel"]
+        self.assertEqual(fixture_only["A"], fixture_only["B"])
+        self.assertEqual(fixture_only["A"], fixture_only["C"])
 
     def test_written_file_equals_returned_expected(self):
         written = json.loads((self.out / "expected_dump.json").read_text(encoding="utf-8"))

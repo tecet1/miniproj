@@ -21,7 +21,7 @@ DISTRIBUTION_KEYS = ("sales_item_by_payment_date", "sales_item_by_payment_method
 CONSTANT_DIM_ROWS = {"dim_channel": 3, "dim_payment_method": 5, "dim_refund_profile": 10}
 
 
-def compute_expected(scenarios: list[dict], skus: list[dict]) -> dict:
+def compute_expected(scenarios: list[dict], skus: list[dict], channel_scenarios: dict | None = None) -> dict:
     """{"per_channel": {"A": {...}, "B": {...}, "C": {...}}, "total": {...}} 를 돌려준다.
 
     scenarios, skus 는 JSON을 읽은 그대로의 리스트다 (scenario_loader를 쓰지 않는다).
@@ -42,12 +42,16 @@ def compute_expected(scenarios: list[dict], skus: list[dict]) -> dict:
       - fact_refund 는 위 조건을 만족하는 주문의 환불 이벤트 수다.
     total 은 세 채널 합이다. 단 paying_customers 는 채널+user_id 로 구분하므로 채널별 값의 합이다.
     "dimensions" 는 Dimension 행 수다 (dim_product 는 skus 수).
+    channel_scenarios({"A": [...], "B": [...], "C": [...]})를 주면 scenarios(세 채널 공통)에 채널별 시나리오를 더해 채널마다 계산한다.
+    생략하면 모든 채널에 같은 scenarios를 적용한다 (기존 동작).
     """
     prices = {sku["product_id"]: sku["unit_price"] for sku in skus}
-    # 시나리오는 세 채널에 같은 내용이므로 한 채널분을 계산하면 된다.
-    one_channel, distributions = _count_one_channel(scenarios, prices)
-    per_channel = {channel: _add_metrics({**one_channel, **{k: dict(v) for k, v in distributions.items()}})
-                   for channel in CHANNELS}
+    # 시나리오가 모든 채널에 같으면 한 채널분을 한 번만 계산한다.
+    common = _count_one_channel(scenarios, prices) if channel_scenarios is None else None
+    per_channel = {}
+    for channel in CHANNELS:
+        counts, distributions = common or _count_one_channel(scenarios + channel_scenarios.get(channel, []), prices)
+        per_channel[channel] = _add_metrics({**counts, **{k: dict(v) for k, v in distributions.items()}})
     total = {key: sum(per_channel[c][key] for c in CHANNELS) for key in COUNT_KEYS}
     for key in DISTRIBUTION_KEYS:
         merged = Counter()

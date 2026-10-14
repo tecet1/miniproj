@@ -6,9 +6,74 @@
   "base_orders_per_day": 200,
   "growth_annual": 0.25,
   "sigma_monthly": 0.025,
-  "weekday_factor": [1.0, 1.0, 1.0, 1.0, 1.15, 1.35, 1.2],
-  "month_factor": {"11": 1.25, "12": 1.2, "1": 0.9, "2": 0.9},
-  "promo": {"days_per_month": [1, 2], "multiplier": [2.0, 3.0]},
+  "weekday_factor": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.15,
+    1.35,
+    1.2
+  ],
+  "month_factor": {
+    "11": 1.25,
+    "12": 1.2,
+    "1": 0.9,
+    "2": 0.9
+  },
+  "promo": {
+    "days_per_month": [
+      1,
+      2
+    ],
+    "multiplier": [
+      2.0,
+      3.0
+    ]
+  },
   "nb_dispersion": 50,
-  "duplicate_rate": 0.01
+  "duplicate_rate": 0.01,
+  "customers_start": 30000,
+  "refund_sigma": 0.25,
+  "hour_weights": [
+    3,
+    2,
+    1.5,
+    1,
+    0.7,
+    0.5,
+    0.8,
+    1,
+    1.2,
+    3,
+    5,
+    7,
+    10,
+    12,
+    11,
+    10,
+    9,
+    8,
+    7.5,
+    7,
+    6.5,
+    6,
+    5,
+    4
+  ],
+  "channels": {
+    "A": {
+      "share": 0.2,
+      "growth_annual": 0.3
+    },
+    "B": {
+      "share": 0.5,
+      "growth_annual": 0.15
+    },
+    "C": {
+      "share": 0.3,
+      "growth_annual": 0.4
+    }
+  },
+  "shock_correlation": 0.8
 }
