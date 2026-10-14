@@ -31,4 +31,4 @@
 
 ## 현재 단계
 
-장기 데이터 덤프 → 시뮬레이터 순서로 진행 중이다. 합성 시나리오 생성기(`04_experiments/src/synth_scenarios.py`)와 설정(`04_experiments/configs/dump.json`)은 완료했고, 카드 1-A·1-B는 완료했고(고객 수·시간대·환불율 변동 반영), 카드 1-C는 로컬 구현을 마쳤고 Databricks 실행 확인을 기다린다(`04_experiments/src/run_dump.py`). 다음은 카드 1-D다. 병행해서 대시보드 상단 필터와 비교 기간 KPI(`plans/05` 카드 5-F)가 있다. 이 카드는 사용자가 Databricks 화면에서 직접 구성하므로 산출물은 데이터셋 SQL과 구성 가이드다.
+장기 데이터 덤프 → 시뮬레이터 순서로 진행 중이다. 합성 시나리오 생성기(`04_experiments/src/synth_scenarios.py`)와 설정(`04_experiments/configs/dump.json`)은 완료했고, 카드 1-A·1-B는 완료했고(고객 수·시간대·환불율 변동 반영), 카드 1-C는 완료했고(Databricks 사용자 확인), 카드 1-D는 대시보드 수준에서 기대값과 일치함을 확인했다. 남은 것은 `check_*` 확장이다. 다음 큰 단계는 상시 스트리밍과 선언형 품질 규칙(`plans/07`, 카드 7-A부터)이다. 병행해서 대시보드 상단 필터와 비교 기간 KPI(`plans/05` 카드 5-F)가 있다. 이 카드는 사용자가 Databricks 화면에서 직접 구성하므로 산출물은 데이터셋 SQL과 구성 가이드다.

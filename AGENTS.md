@@ -71,6 +71,7 @@
 |---|---|
 | 이벤트 생성 | `python .\01_contracts\src\generate.py` |
 | 전체 로컬 테스트 | `python -m unittest discover -s .\02_pipeline\tests -v` (하위 폴더에 `__init__.py` 필요) |
+| 로컬 Spark 포함 테스트 | `.\.venv\Scripts\python.exe -m unittest discover -s .\02_pipeline\tests -t .\02_pipeline\tests` (pyspark·JDK 필요, 준비 방법은 `02_pipeline/tests/spark_support.py` 머리말. 없으면 Spark 테스트는 건너뜀) |
 | 층별 테스트 | `python -m unittest discover -s .\02_pipeline\tests\silver -v` |
 | Gold 테스트 | `python -m unittest discover -s .\02_pipeline\tests\gold -v` |
 | Serving 테스트 | `python -m unittest discover -s .\02_pipeline\tests\serving -v` |
