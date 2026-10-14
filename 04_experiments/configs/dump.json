@@ -1,0 +1,14 @@
+{
+  "seed": 20261014,
+  "start": "2025-10-15",
+  "end": "2026-10-14",
+  "anchor_month": "2025-10",
+  "base_orders_per_day": 200,
+  "growth_annual": 0.25,
+  "sigma_monthly": 0.025,
+  "weekday_factor": [1.0, 1.0, 1.0, 1.0, 1.15, 1.35, 1.2],
+  "month_factor": {"11": 1.25, "12": 1.2, "1": 0.9, "2": 0.9},
+  "promo": {"days_per_month": [1, 2], "multiplier": [2.0, 3.0]},
+  "nb_dispersion": 50,
+  "duplicate_rate": 0.01
+}

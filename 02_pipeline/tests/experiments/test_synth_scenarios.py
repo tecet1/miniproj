@@ -1,8 +1,12 @@
-"""synth_scenarios 테스트 (pyspark 없이). 같은 시드의 재현성, 형식 유효성, 업무 규칙, 기존 생성기와의 연결을 확인한다.
+"""synth_scenarios 테스트 (pyspark 없이). 모형 파라미터의 실현, 재현성, 형식 유효성, 업무 규칙, 기존 생성기와의 연결을 확인한다.
 
+모형(월 수준 경로, 음이항 일 주문 수, 요일·판촉 계수)은 04_experiments/docs/기업_프로필과_성장_모형.md가 근거다.
 기대값과의 독립성은 expected.py가 시나리오만 읽는 구조로 지킨다. 여기서는 expected를 시나리오에서 한 번 더 세어 대조한다.
 """
 import json
+import math
+import random
+import statistics
 import sys
 import unittest
 from collections import Counter
@@ -24,9 +28,13 @@ from ids import NamedIds  # noqa: E402
 
 CONTRACTS = ROOT / "01_contracts" / "contracts"
 SKUS = scenario_loader.load_skus(CONTRACTS / "skus.json")
-SEED, START, END, BASE = 7, date(2025, 10, 15), date(2026, 10, 14), 12
-YEAR = synth.build_scenarios(SKUS, SEED, START, END, BASE)
+CONFIG = json.loads((ROOT / "04_experiments" / "configs" / "dump.json").read_text(encoding="utf-8"))
+YEAR = synth.build_scenarios(SKUS, CONFIG)
 ORDERS = [(s, o) for s in YEAR for o in s["orders"]]
+START, END = date.fromisoformat(CONFIG["start"]), date.fromisoformat(CONFIG["end"])
+FLAT = dict(CONFIG, growth_annual=0.0, sigma_monthly=0.0, month_factor={}, promo={"days_per_month": [0, 0], "multiplier": [2.0, 3.0]})
+# 보고서(기업_프로필과_성장_모형.md 2절)의 채널당 연간 주문 수: 시드 2,000개 평균 약 83,300, 5~95% 약 76,700~90,400
+REPORT_ANNUAL_ORDERS = 83300
 # 채널 변환기(생성기 쪽)가 만들 수 있는 코드. 세 채널의 교집합이다. synth_scenarios의 상수와 별개로 읽는다.
 CONVERTIBLE_METHODS = set(channel_a.METHODS) & set(channel_b.METHODS) & set(channel_c.METHODS)
 CONVERTIBLE_REASONS = set(channel_a.REASONS) & set(channel_b.REASONS) & set(channel_c.REASONS)
@@ -45,19 +53,115 @@ def kind_of(order):
     return "RETRY_PAID" if "PAYMENT_FAILED" in types else "PAID"
 
 
+def sample_moments(mean, dispersion, n, seed=1):
+    rng = random.Random(seed)
+    values = [synth.draw_count(rng, mean, dispersion) for _ in range(n)]
+    return statistics.mean(values), statistics.pvariance(values)
+
+
+class TestGrowthModel(unittest.TestCase):
+    def test_month_levels_start_at_one(self):
+        self.assertEqual(1.0, synth.month_levels(CONFIG, 12)[0])
+
+    def test_monthly_log_growth_has_the_configured_mean_and_sigma(self):
+        steps = []
+        for seed in range(400):
+            levels = synth.month_levels(dict(CONFIG, seed=seed), 12)
+            steps += [math.log(levels[i] / levels[i - 1]) for i in range(1, 13)]
+        mu = math.log(1 + CONFIG["growth_annual"]) / 12
+        self.assertAlmostEqual(mu, statistics.mean(steps), delta=0.0008)   # 표준오차 약 0.0004
+        self.assertAlmostEqual(CONFIG["sigma_monthly"], statistics.pstdev(steps), delta=0.002)
+
+    def test_level_path_does_not_depend_on_the_end_month(self):
+        self.assertEqual(synth.month_levels(CONFIG, 12)[:7], synth.month_levels(CONFIG, 6))
+
+    def test_without_growth_and_noise_the_level_is_flat(self):
+        self.assertEqual([1.0] * 13, synth.month_levels(FLAT, 12))
+
+    def test_month_index_counts_from_the_anchor_month(self):
+        self.assertEqual([0, 1, 3, 12], [synth.month_index(date(y, m, 1), CONFIG)
+                                         for y, m in ((2025, 10), (2025, 11), (2026, 1), (2026, 10))])
+
+
+class TestDailyMeans(unittest.TestCase):
+    def test_flat_config_gives_the_base_times_a_weekday_factor_averaging_one(self):
+        means = synth.daily_mean_orders(FLAT)
+        base = CONFIG["base_orders_per_day"]
+        week = CONFIG["weekday_factor"]
+        for day, mean in means:
+            self.assertAlmostEqual(base * week[day.weekday()] / (sum(week) / 7), mean, places=9, msg=str(day))
+        self.assertAlmostEqual(1.35 / 1.0, dict((d.weekday(), m) for d, m in means)[5] / dict((d.weekday(), m) for d, m in means)[1])
+
+    def test_promo_days_per_month_are_one_or_two_with_the_configured_multiplier(self):
+        for month in range(1, 13):
+            promos = synth.promo_days(CONFIG, 2026, month)
+            self.assertIn(len(promos), (1, 2))
+            self.assertTrue(all(1 <= day <= synth.days_in_month(2026, month) for day in promos))
+            self.assertTrue(all(2.0 <= m <= 3.0 for m in promos.values()))
+        self.assertEqual(synth.promo_days(CONFIG, 2026, 5), synth.promo_days(CONFIG, 2026, 5))
+
+    def test_promo_days_raise_those_days_but_not_the_monthly_volume(self):
+        flat_promo = dict(FLAT, start="2026-09-01", end="2026-09-30", promo=CONFIG["promo"])
+        totals = []
+        for seed in range(150):
+            means = synth.daily_mean_orders(dict(flat_promo, seed=seed))
+            totals.append(sum(m for _, m in means))
+        self.assertAlmostEqual(CONFIG["base_orders_per_day"] * 30, statistics.mean(totals), delta=CONFIG["base_orders_per_day"] * 30 * 0.02)
+        peak = max(m for _, m in synth.daily_mean_orders(dict(flat_promo, seed=3)))
+        week = CONFIG["weekday_factor"]
+        self.assertGreater(peak, CONFIG["base_orders_per_day"] * max(week) / (sum(week) / 7) * 1.4)
+
+    def test_expected_annual_volume_matches_the_report(self):
+        totals = [sum(m for _, m in synth.daily_mean_orders(dict(CONFIG, seed=seed))) for seed in range(100)]
+        self.assertAlmostEqual(REPORT_ANNUAL_ORDERS, statistics.mean(totals), delta=REPORT_ANNUAL_ORDERS * 0.02)
+
+
+class TestCountDistribution(unittest.TestCase):
+    def test_negative_binomial_moments_for_a_large_mean(self):
+        mean, variance = sample_moments(200, 50, 20000)
+        self.assertAlmostEqual(200, mean, delta=1.5)
+        self.assertAlmostEqual(200 + 200 ** 2 / 50, variance, delta=100)   # 1000 +-10%
+
+    def test_negative_binomial_moments_for_a_small_mean(self):
+        mean, variance = sample_moments(5, 50, 40000)
+        self.assertAlmostEqual(5, mean, delta=0.1)
+        self.assertAlmostEqual(5 + 5 ** 2 / 50, variance, delta=0.4)
+
+    def test_counts_are_more_dispersed_than_poisson(self):
+        mean, variance = sample_moments(200, 50, 20000)
+        self.assertGreater(variance, 3 * mean)
+
+    def test_counts_are_never_negative(self):
+        rng = random.Random(0)
+        self.assertGreaterEqual(min(synth.draw_count(rng, 3, 50) for _ in range(2000)), 0)
+
+
 class TestReproducibility(unittest.TestCase):
-    def test_same_seed_gives_same_scenarios(self):
-        self.assertEqual(YEAR, synth.build_scenarios(SKUS, SEED, START, END, BASE))
+    def test_same_config_gives_same_scenarios(self):
+        self.assertEqual(YEAR, synth.build_scenarios(SKUS, CONFIG))
 
     def test_other_seed_gives_other_scenarios(self):
-        self.assertNotEqual(YEAR, synth.build_scenarios(SKUS, SEED + 1, START, END, BASE))
+        month = dict(CONFIG, start="2026-03-01", end="2026-03-31")
+        self.assertNotEqual(synth.build_scenarios(SKUS, month), synth.build_scenarios(SKUS, dict(month, seed=1)))
 
     def test_days_differ_from_each_other(self):
         first_orders = {json.dumps(s["orders"][0], sort_keys=True) for s in YEAR}
         self.assertGreater(len(first_orders), 300)
 
-    def test_a_day_does_not_depend_on_the_range(self):
-        short = synth.build_scenarios(SKUS, SEED, date(2026, 3, 1), date(2026, 10, 14), BASE)
+    def test_days_already_made_do_not_change_when_the_end_is_moved(self):
+        short = synth.build_scenarios(SKUS, dict(CONFIG, end="2026-06-30"))
+        stable = (date(2026, 6, 19) - START).days + 1   # 종료일 11일 전까지. 그 뒤 날짜는 환불이 종료일에 잘려 달라진다
+        self.assertEqual(len(YEAR[:stable]), len(short[:stable]))
+        self.assertTrue(all(a == b for a, b in zip(YEAR[:stable], short[:stable])))
+
+    def test_days_near_the_end_lose_refunds_that_would_fall_after_it(self):
+        short = synth.build_scenarios(SKUS, dict(CONFIG, end="2026-06-30"))
+        refunds = lambda scenarios: sum(1 for s in scenarios for o in s["orders"] for e in o["events"]
+                                         if e["type"] == "REFUND_SUCCEEDED")
+        self.assertLess(refunds(short[-10:]), refunds(YEAR[len(short) - 10:len(short)]))
+
+    def test_a_day_does_not_depend_on_the_start_date(self):
+        short = synth.build_scenarios(SKUS, dict(CONFIG, start="2026-03-01"))
         self.assertEqual(next(s for s in YEAR if s["id"] == "L20260301"), short[0])
 
 
@@ -75,20 +179,24 @@ class TestShape(unittest.TestCase):
     def test_passes_the_scenario_validator(self):
         scenario_validator.validate_scenarios(YEAR, SKUS)
 
-    def test_order_numbers_are_unique_per_scenario(self):
+    def test_orders_are_numbered_in_time_order(self):
         for scenario in YEAR:
-            numbers = [o["order_no"] for o in scenario["orders"]]
-            self.assertEqual(list(range(1, len(numbers) + 1)), numbers, scenario["id"])
+            self.assertEqual(list(range(1, len(scenario["orders"]) + 1)), [o["order_no"] for o in scenario["orders"]])
+            starts = [o["start_offset_sec"] for o in scenario["orders"]]
+            self.assertEqual(sorted(starts), starts, scenario["id"])
 
     def test_every_order_kind_appears(self):
         self.assertEqual({"PAID", "RETRY_PAID", "FAILED_ONLY", "CANCELLED", "REFUNDED"},
                          {kind_of(o) for _, o in ORDERS})
 
-    def test_weekend_is_busier_than_midweek(self):
+    def test_weekend_is_busier_than_midweek_in_the_realized_data(self):
         by_weekday = Counter()
         for scenario in YEAR:
             by_weekday[datetime.fromisoformat(scenario["start_kst"]).weekday()] += len(scenario["orders"])
         self.assertGreater(by_weekday[5], by_weekday[1])
+
+    def test_realized_year_is_inside_the_model_band(self):
+        self.assertTrue(76000 <= len(ORDERS) <= 91000, len(ORDERS))   # 보고서 5~95% 구간 근처
 
     def test_no_fault_is_injected(self):
         self.assertFalse([e for _, o in ORDERS for e in o["events"] if "fault" in e])
@@ -107,6 +215,14 @@ class TestBusinessRules(unittest.TestCase):
                 self.assertEqual(0, line["discount"] % 500)
                 discounts.append(line["discount"])
         self.assertTrue([d for d in discounts if d > 0])
+
+    def test_average_paid_order_amount_is_about_80000(self):
+        amounts = []
+        for _, order in ORDERS:
+            if kind_of(order) in ("PAID", "RETRY_PAID", "REFUNDED"):
+                paid = sum(SKUS[i["sku"]]["unit_price"] * i["quantity"] - i["discount"] for i in order["items"])
+                amounts.append(paid + (0 if paid >= 20000 else 4000))
+        self.assertTrue(72000 <= statistics.mean(amounts) <= 84000, statistics.mean(amounts))
 
     def test_codes_are_the_ones_channel_converters_map_and_all_of_them_appear(self):
         events = [e for _, o in ORDERS for e in o["events"]]
@@ -150,8 +266,8 @@ class TestBusinessRules(unittest.TestCase):
 class TestWithExistingGenerators(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.month = synth.build_scenarios(SKUS, SEED, date(2026, 9, 1), date(2026, 9, 30), BASE)
-        cls.ids = NamedIds(str(SEED))
+        cls.month = synth.build_scenarios(SKUS, dict(CONFIG, start="2026-09-01", end="2026-09-30"))
+        cls.ids = NamedIds(str(CONFIG["seed"]))
 
     def test_canonical_builds_events_with_unique_uuid_ids(self):
         events = [e for s in self.month for e in canonical.build_events(s, SKUS, "A", self.ids)]
@@ -171,10 +287,8 @@ class TestWithExistingGenerators(unittest.TestCase):
         self.assertEqual(kinds["CANCELLED"], result["silver_order_cancellations"])
         self.assertEqual(sum(len(o["events"]) + sum(1 for e in o["events"] if e.get("send_count") == 2)
                              for o in orders), result["bronze_rows"])
-        paying = kinds["PAID"] + kinds["RETRY_PAID"] + kinds["REFUNDED"]
         self.assertEqual(sum(len(o["items"]) for o in orders if kind_of(o) in ("PAID", "RETRY_PAID", "REFUNDED")),
                          result["fact_sales_item"])
-        self.assertGreater(paying, 0)
         self.assertEqual(0, result["quarantine"])
 
 
