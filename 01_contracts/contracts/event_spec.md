@@ -39,6 +39,10 @@
 | order_id | STRING | Y | 주문 ID (채널 내 유일) |
 | user_id | STRING | N | 채널 내 회원 ID. 비로그인이면 null |
 
+**ID 규칙 (2026-10-14):** ID 필드(`event_id`, `order_id`, `order_item_id`, `payment_id`, `refund_id`, `user_id`)는 의미를 담지 않는 불투명한 `STRING`이다. 형식과 길이에 제한이 없고, 파이프라인(Bronze·Silver·Gold)은 ID의 구조를 해석하지 않는다. 유일성만 요구한다: `event_id`·`order_id`는 채널 안에서 유일하고, `order_item_id`는 채널 안에서 유일하다(Silver `order_items` PK가 `channel, order_item_id`). 같은 이벤트를 다시 보낼 때는 같은 `event_id`를 쓴다(중복 제거 키).
+- 장기·운영용 데이터의 ID는 UUID 문자열(소문자, 하이픈 포함 36자)이다. 덤프는 시드·채널·시나리오·순번에서 만드는 이름 기반 UUID(v5)라 다시 만들어도 같은 ID가 나오고, 시뮬레이터 서버는 무작위 UUID(v4)를 쓴다. `order_item_id`는 `{order_id}-{순번}`이다.
+- 고정 픽스처(`scenarios.md`)는 읽기 쉬운 규칙 ID(`A-S01-1-E1` 등)를 유지한다. 이는 위 조건을 만족하는 값의 하나이며 독립 기대값과 테스트가 이 ID를 참조하기 때문이다.
+
 Bronze 컬럼: `channel`(요청 경로의 채널), `received_at`(Function이 부여한 수신 시각, UTC), `payload`(원본 JSON 문자열), `eh_partition`, `eh_offset`(Event Hubs 위치, 키는 `(eh_partition, eh_offset)`), `eh_enqueued_at`(Event Hubs 수신 시각), `ingested_at`(Bronze 적재 시각).
 Function은 payload를 해석하지 않고 `{"channel","received_at","payload"}` 봉투로 감싸 Event Hubs에 보낸다. `channel`은 A·B·C 외에는 400으로 거절한다.
 

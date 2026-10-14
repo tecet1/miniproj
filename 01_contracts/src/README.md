@@ -16,6 +16,7 @@ expected.py: scenarios.json, skus.json 만 읽어 기대값 계산 (위 모듈�
 |---|---|---|
 | `timeutil` | datetime → 채널별 시각 문자열·숫자 | UTC와 KST 날짜가 다를 수 있음(S23) |
 | `pricing` | 금액·배송비·환불 금액 | 규칙은 `scenarios.md` |
+| `ids` | ID 생성 3종: `ReadableIds`(픽스처 규칙), `NamedIds`(이름 기반 UUID v5, 시드 고정), `RandomIds`(UUID v4) | 규칙은 `event_spec.md` 1.1절. 생략하면 `ReadableIds` |
 | `scenario_loader` | JSON 읽기 | 파일 읽기만 담당 |
 | `scenario_validator` | 시나리오가 SKU·이벤트 정의대로인지 검사 | 읽기와 검사를 분리 |
 | `canonical` | 시나리오 → 채널 중립 이벤트 | 채널을 모르는 로직. ID·시각·금액이 여기서 정해짐 |
@@ -32,6 +33,7 @@ expected.py: scenarios.json, skus.json 만 읽어 기대값 계산 (위 모듈�
 |---|---|---|
 | 1 | `timeutil.py` | `test_timeutil` |
 | 2 | `pricing.py` | `test_pricing` |
+| 2 | `ids.py` | `test_ids` |
 | 3 | `scenario_loader.py` | `test_scenario_loader` |
 | 4 | `scenario_validator.py` | `test_scenario_validator` |
 | 5 | `canonical.py` | `test_canonical` |

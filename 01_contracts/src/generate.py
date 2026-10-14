@@ -24,16 +24,17 @@ def _dump(obj) -> str:
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
 
 
-def build_lines(channel: str, scenarios: list[dict], skus: dict[str, dict]) -> list[str]:
+def build_lines(channel: str, scenarios: list[dict], skus: dict[str, dict], ids=None) -> list[str]:
     """한 채널의 events.jsonl 줄 목록을 돌려준다 (줄바꿈 문자는 붙이지 않는다).
 
     중립 이벤트마다: to_raw -> fault가 있으면 apply_fault -> payload 문자열 -> {"channel", "payload"} 한 줄.
-    send_count 만큼 같은 줄을 반복한다 (S19). 현재 시각·난수를 쓰지 않으므로 결과는 항상 같다.
+    send_count 만큼 같은 줄을 반복한다 (S19). ids를 생략하면 읽기 쉬운 규칙 ID이고 현재 시각·난수를 쓰지 않으므로 결과는 항상 같다.
+    RandomIds를 넘기면 호출마다 ID가 달라진다 (같은 이벤트를 여러 번 보내는 send_count는 같은 줄을 반복하므로 같은 ID다).
     """
     module = CHANNELS[channel]
     lines = []
     for scenario in scenarios:
-        for event in canonical.build_events(scenario, skus, channel):
+        for event in canonical.build_events(scenario, skus, channel, ids):
             raw = module.to_raw(event)
             if event["fault"]:
                 raw = faults.apply_fault(raw, event["fault"], module.FAULT_PATHS, module.UNKNOWN_EVENT_CODE)
@@ -42,12 +43,12 @@ def build_lines(channel: str, scenarios: list[dict], skus: dict[str, dict]) -> l
     return lines
 
 
-def write_fixtures(out_dir, scenarios: list[dict], skus: dict[str, dict]) -> None:
+def write_fixtures(out_dir, scenarios: list[dict], skus: dict[str, dict], ids=None) -> None:
     """out_dir/{A,B,C}/events.jsonl 을 쓴다. UTF-8, 줄바꿈은 LF로 고정, 마지막 줄도 줄바꿈으로 끝낸다."""
     for channel in CHANNELS:
         path = Path(out_dir) / channel / "events.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
-        text = "\n".join(build_lines(channel, scenarios, skus)) + "\n"
+        text = "\n".join(build_lines(channel, scenarios, skus, ids)) + "\n"
         path.write_text(text, encoding="utf-8", newline="\n")
 
 

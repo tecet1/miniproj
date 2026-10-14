@@ -17,27 +17,32 @@
 from datetime import datetime, timedelta, timezone
 
 import pricing
+from ids import ReadableIds
 
 
-def build_events(scenario: dict, skus: dict[str, dict], channel: str) -> list[dict]:
-    """scenario의 모든 주문을 발생 순서대로 중립 이벤트로 만든다."""
+def build_events(scenario: dict, skus: dict[str, dict], channel: str, ids=None) -> list[dict]:
+    """scenario의 모든 주문을 발생 순서대로 중립 이벤트로 만든다.
+
+    ids는 ID를 만드는 객체다(ids.py). 생략하면 고정 픽스처의 읽기 쉬운 규칙(ReadableIds)이다.
+    """
+    ids = ids or ReadableIds()
     scenario_start = datetime.fromisoformat(scenario["start_kst"])
     events = []
     for order in scenario["orders"]:
-        order_id = f"{channel}-{scenario['id']}-{order['order_no']}"
+        order_id = ids.order_id(channel, scenario["id"], order["order_no"])
         order_start = scenario_start + timedelta(seconds=order.get("start_offset_sec", 0))
-        events += _build_order_events(order, order_id, order_start, skus)
+        events += _build_order_events(order, order_id, order_start, skus, ids)
     return events
 
 
-def _build_items(order: dict, order_id: str, skus: dict[str, dict]) -> tuple[list[dict], list[int]]:
+def _build_items(order: dict, order_id: str, skus: dict[str, dict], ids) -> tuple[list[dict], list[int]]:
     """주문 상품 행 목록과, 행별 할인 후 금액(item_paid_amount) 목록을 함께 돌려준다."""
     items, paid_amounts = [], []
     for seq, line in enumerate(order["items"], start=1):
         sku = skus[line["sku"]]
         _, paid = pricing.item_amounts(sku["unit_price"], line["quantity"], line["discount"])
         items.append({
-            "order_item_id": f"{order_id}-{seq}",
+            "order_item_id": ids.order_item_id(order_id, seq),
             "product_id": sku["product_id"],
             "product_name": sku["product_name"],
             "category": sku["category"],
@@ -50,9 +55,9 @@ def _build_items(order: dict, order_id: str, skus: dict[str, dict]) -> tuple[lis
 
 
 def _build_order_events(order: dict, order_id: str, order_start: datetime,
-                        skus: dict[str, dict]) -> list[dict]:
+                        skus: dict[str, dict], ids) -> list[dict]:
     """주문 하나의 이벤트를 만든다. 번호(E, P, R)와 성공 결제 ID를 세면서 순서대로 처리한다."""
-    items, paid_amounts = _build_items(order, order_id, skus)
+    items, paid_amounts = _build_items(order, order_id, skus, ids)
     shipping = pricing.shipping_fee(sum(paid_amounts))
     payment_amount = sum(paid_amounts) + shipping
 
@@ -62,7 +67,7 @@ def _build_order_events(order: dict, order_id: str, order_start: datetime,
     for event_no, spec in enumerate(order["events"], start=1):
         event_time = order_start + timedelta(seconds=spec["offset_sec"])
         event = {
-            "event_id": f"{order_id}-E{event_no}",
+            "event_id": ids.event_id(order_id, event_no),
             "event_type": spec["type"],
             "order_id": order_id,
             "user_id": order["user_id"],
@@ -77,7 +82,7 @@ def _build_order_events(order: dict, order_id: str, order_start: datetime,
         elif spec["type"] in ("PAYMENT_SUCCEEDED", "PAYMENT_FAILED"):
             payment_no += 1
             event.update(
-                payment_id=f"{order_id}-P{payment_no}",
+                payment_id=ids.payment_id(order_id, payment_no),
                 payment_method=spec["method"],
                 payment_amount=payment_amount,
                 fail_reason_code=spec.get("fail_reason"),
@@ -88,7 +93,7 @@ def _build_order_events(order: dict, order_id: str, order_start: datetime,
             refund_no += 1
             line_index = spec["item"] - 1
             event.update(
-                refund_id=f"{order_id}-R{refund_no}",
+                refund_id=ids.refund_id(order_id, refund_no),
                 payment_id=succeeded_payment_id,
                 order_item_id=items[line_index]["order_item_id"],
                 refund_quantity=spec["quantity"],
