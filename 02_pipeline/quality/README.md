@@ -51,11 +51,23 @@
 - 지우지 않고 끄려면 항목에 `"enabled": false`를 넣는다.
 - 모양 검사: `python -m unittest discover -s .\02_pipeline\tests\quality -v` (규칙 목록 자체도 이 테스트가 읽는다).
 
+## 증분 실행과 결과 기록 (카드 7-C·7-D 일부)
+
+- `run_checks.run_quality_checks(spark, schemas, mode)`: 집합 규칙을 실행하고 결과를 `commerce_poc.quality.results`에 쌓는다. 노트북은 `run_quality.py`.
+  - `incremental`: 증분 규칙만, 직전 incremental 실행 시각 - 10분 이후의 행만 본다. 처음이면 전체를 본다.
+  - `full`: 모든 집합 규칙을 시간 제한 없이 본다. 덤프처럼 `received_at`이 과거인 행은 증분에 걸리지 않으므로 여기서 본다.
+  - 결과 한 줄 = 규칙 하나의 한 번 실행: 규칙 이름(`rule_id`)·단계(`stage`)·위반 건수(`violations`)·`status`(pass/warn/error/exception)·`since`·`detail`. SQL이 실패하면 `exception`으로 기록하고 다음 규칙을 계속한다.
+- `batch_check.make_after_batch(schema)`: Silver 배치마다 "들어온 수 = Silver 반영 + 중복 제거 + 격리"를 확인해 `silver_batch_balance` 한 줄을 `batch_id`와 함께 기록한다. `silver_stream.run_silver(..., after_batch=...)`로 연결한다(`run_silver.py` 노트북이 연결한다).
+- 로컬 Spark에서 SQL 의미와 집계를 확인했다. results 테이블 저장, Delta MERGE 뒤 조회, 노트북의 `sys.path` 가정은 **Databricks 미검증**이다.
+
 ## 파일
 
 | 파일 | 역할 |
 |---|---|
 | `rules.json` | 규칙 목록. 사용자가 추가·수정하는 곳 |
+| `run_checks.py` | 집합 규칙 실행(증분·전수)과 results 저장 |
+| `batch_check.py` | Silver 배치 균형 검사와 기록 |
+| `run_quality.py` | 노트북(호출만) |
 | `rules.py` | `load_rules`(읽기·검사), `validate_rules`, `row_violation_condition`(행 규칙 → Spark SQL 위반 조건), `render_set_sql`(집합 규칙 SQL 채우기), `judge`(허용값 판정) |
 
 ## 지금 들어 있는 규칙

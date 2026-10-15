@@ -9,6 +9,12 @@
 
 # COMMAND ----------
 
+import os
+import sys
+
+sys.path.append(os.path.abspath("../quality"))   # 노트북 폴더 기준. Git folder에서 quality 모듈을 찾는다 (미검증)
+
+from batch_check import make_after_batch
 from silver_check import check_silver
 from silver_stream import run_silver
 from silver_tables import create_tables
@@ -16,16 +22,19 @@ from validate_skus import load_known_skus
 
 BRONZE_TABLE = "commerce_poc.bronze.events"
 SCHEMA = "commerce_poc.silver"
+QUALITY_SCHEMA = "commerce_poc.quality"
 CHECKPOINT = "/Volumes/commerce_poc/silver/checkpoints/silver_events"
 # ADLS 저장 위치: 스키마의 MANAGED LOCATION. 테이블과 체크포인트 볼륨이 이 아래에 저장된다
 STORAGE_ROOT = "abfss://commerce-poc@swleeteststorage01.dfs.core.windows.net/storage"
 SILVER_PATH = f"{STORAGE_ROOT}/silver"
+QUALITY_PATH = f"{STORAGE_ROOT}/quality"
 
 # COMMAND ----------
 
 # 스키마와 체크포인트 볼륨이 없으면 저장 위치를 지정해 만든다 (Unity Catalog 권한 필요). 스키마가 이미 있으면 위치는 바뀌지 않는다
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA} MANAGED LOCATION '{SILVER_PATH}'")
 spark.sql(f"CREATE VOLUME IF NOT EXISTS {SCHEMA}.checkpoints")
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS {QUALITY_SCHEMA} MANAGED LOCATION '{QUALITY_PATH}'")   # 증분 검사 결과(results) 저장 위치
 create_tables(spark, SCHEMA)
 
 # COMMAND ----------
@@ -36,7 +45,8 @@ create_tables(spark, SCHEMA)
 
 # COMMAND ----------
 
-run_silver(spark, BRONZE_TABLE, SCHEMA, CHECKPOINT, load_known_skus())
+# 배치마다 "들어온 수 = 반영 + 중복 + 격리"를 확인해 commerce_poc.quality.results에 기록한다
+run_silver(spark, BRONZE_TABLE, SCHEMA, CHECKPOINT, load_known_skus(), make_after_batch(SCHEMA))
 
 # COMMAND ----------
 
@@ -46,7 +56,7 @@ print(check_silver(spark, SCHEMA, BRONZE_TABLE) or "OK")
 # COMMAND ----------
 
 # 재실행 검증: 새 체크포인트로 Bronze를 처음부터 다시 읽어도 건수가 그대로여야 한다 (insert-only MERGE의 멱등성)
-run_silver(spark, BRONZE_TABLE, SCHEMA, CHECKPOINT + "_rerun", load_known_skus())
+run_silver(spark, BRONZE_TABLE, SCHEMA, CHECKPOINT + "_rerun", load_known_skus(), make_after_batch(SCHEMA))
 print(check_silver(spark, SCHEMA, BRONZE_TABLE) or "OK")
 
 # COMMAND ----------

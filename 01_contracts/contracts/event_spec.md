@@ -54,7 +54,7 @@ Function은 payload를 해석하지 않고 `{"channel","received_at","payload"}`
 |---|---|---|---|
 | shipping_fee | INT | Y | 주문 단위 배송비 (0 이상) |
 | items[] | ARRAY | Y | 1건 이상 |
-| items[].order_item_id | STRING | Y | 주문 내 유일한 상품 행 ID |
+| items[].order_item_id | STRING | Y | 채널 안에서 유일한 상품 행 ID (ID 규칙 참고) |
 | items[].product_id | STRING | Y | 판매자 SKU (공통 상품코드) |
 | items[].product_name | STRING | N | 표시용 |
 | items[].category | STRING | N | 상품 카테고리 |
@@ -96,6 +96,8 @@ Function은 payload를 해석하지 않고 `{"channel","received_at","payload"}`
 ### 1.3 Silver 테이블
 
 Silver는 이벤트를 채널별 행동 맥락으로 해석해 이벤트 유형별 테이블에 쌓는다. 행동 테이블의 단위(grain)는 이벤트 1건이며 PK는 `(channel, event_id)`다. 같은 주문·결제·환불 ID에 이벤트가 여러 번 올 수 있어 업무 ID는 PK가 아니다. `order_items`만 상품 행 단위다. `channel`은 모든 테이블에 있다.
+
+**업무 ID별 허용 이벤트 수 (2026-10-15, PoC 지원 범위):** 주문 생성은 `(channel, order_id)`당 1건, 주문 취소는 `(channel, order_id)`당 1건, 결제 성공은 `(channel, order_id)`당 1건(결제 실패는 여러 건 가능), 환불은 `(channel, refund_id)`당 1건이다. 이 범위를 넘는 이벤트는 `event_id`가 다르면 Silver에 그대로 쌓이고, 6.6절 집합 검사가 위반으로 보고한다. 위반 주문은 Gold에서 제외한다(6.1절). 이는 PoC를 단순화한 선택이며 업무 규칙이 그렇다는 뜻이 아니다. 분할 결제와 주문 이벤트 재생성은 지원하지 않는다.
 
 | 테이블 | 원천 이벤트 | PK | 컬럼 (`channel`, PK의 `event_id` 제외) |
 |---|---|---|---|
@@ -255,7 +257,7 @@ Silver는 이벤트를 채널별 행동 맥락으로 해석해 이벤트 유형�
 | `UNKNOWN_EVENT_TYPE` | 매핑표에 없는 이벤트 코드 |
 | `MISSING_REQUIRED` | 필수 필드 누락, 필수 ID 필드(`event_id`, `order_id`, 상품·결제·환불 ID 등)가 null 또는 빈 문자열, 주문의 `items`가 비어 있음 |
 | `INVALID_TYPE` | 정수/시간 형식 오류, ID 필드가 문자열이 아님, `items`가 객체 배열이 아님 |
-| `INVALID_VALUE` | 음수 금액, 수량 0 이하, 할인 > 단가×수량, 매핑에 없는 환불 유형, 기준 데이터(`skus.json`)에 없는 `product_id` |
+| `INVALID_VALUE` | 음수 금액, 수량 0 이하, 할인 > 단가×수량, 매핑에 없는 환불 유형, 기준 데이터(`skus.json`)에 없는 `product_id`, 한 주문의 `items` 안에 같은 `order_item_id`가 둘 이상 |
 | `UNKNOWN_CHANNEL` | channel이 A/B/C 아님 |
 | `DUPLICATE_CONFLICT` | 같은 event_id, 다른 내용 (후속, PoC 미구현) |
 
@@ -272,12 +274,12 @@ Silver는 이벤트를 채널별 행동 맥락으로 해석해 이벤트 유형�
 | 항목 | 결정 |
 |---|---|
 | 결제 1건이 여러 상품을 포함 | 상품별 총판매금액은 Gold에서 `order_items`의 상품금액을 `product_id`(SKU)로 상품에 매핑해 계산한다. `payment_amount`는 그 결제 1건의 금액이다. |
-| 부분·분할 결제 | 한 주문에 결제 성공 2건 이상을 허용한다. 생성기는 PoC 1차에서 주문당 성공 1건만 만든다. 주문별 성공 결제금액 합은 상품금액 합 + 배송비와 같아야 하며, 이 대조는 테이블 간 규칙이라 Gold에서 검증한다. |
+| 부분·분할 결제 | PoC는 주문당 결제 성공 1건만 지원한다(2026-10-15 변경, 이전: 2건 이상 허용). 성공 결제가 2건 이상인 주문은 지원 범위 밖이며 6.6절 집합 검사가 위반으로 보고한다. 분할 결제를 지원하려면 Gold의 단위(상품 단위 유지 또는 결제×상품)와 결제금액의 상품별 배분 규칙을 먼저 정해야 한다(후속 과제). 생성기는 주문당 성공 1건만 만든다. 주문별 성공 결제금액 합은 상품금액 합 + 배송비와 같아야 하며, 이 대조는 테이블 간 규칙이라 Gold에서 검증한다. |
 | 취소 단위 | 주문 취소는 주문 전체(주문상품 전체)만 허용한다. 상품별 취소는 없다. |
 | 배송비 환불 | 환불은 상품 단위만 두고 배송비 환불은 제외한다. 순판매금액은 상품금액 기준이다. |
 | 채널 A/B/C 형식 차이 | 현재 수준(필드명·시간·코드)을 유지한다. |
 
-**남은 결정 (Gold 설계 시):** 결제 성공이 2건 이상인 주문에서 `fact_sales_item`의 `payment_id`·`payment_at`(결제일 귀속)을 어느 결제로 잡을지.
+**남은 결정:** 없음. 분할 결제는 PoC 지원 범위 밖이다(위 표).
 
 ---
 
@@ -294,9 +296,11 @@ Silver는 이벤트를 채널별 행동 맥락으로 해석해 이벤트 유형�
 
 - **fact_sales_item 원천:** `order_items`를 `orders`(`channel, order_id`)와 `payments`(`channel, order_id`, `status = SUCCEEDED`)에 조인한다. 결제 성공이 있는 주문의 모든 상품 행이 대상이다. 주문당 결제 성공은 최대 1건이다(5절).
 - **금액:** `item_gross_amount = unit_price × quantity`, `item_paid_amount = item_gross_amount − item_discount`. 배송비는 넣지 않는다.
-- **환불 합계:** `refund_quantity`·`refund_amount`는 `refunds`를 `(channel, order_item_id)`로 합산한다. 환불이 없으면 0, `last_refund_date`는 null이다.
-- **fact_refund 원천:** `refunds`를 `order_items`(`channel, order_item_id`)와 `payments`(`channel, payment_id`, `status = SUCCEEDED`)에 조인한다. `payment_date`는 원결제의 결제일이다. `refund_profile_key = {refund_type}-{refund_reason}`이며 사유가 없으면(`refund_reason_code` null) `OTHER`로 둔다.
+- **환불 합계:** `refund_quantity`·`refund_amount`는 `refunds`를 `(channel, order_item_id)`로 합산한다. 환불이 없으면 0, `last_refund_date`는 null이다. 합산 대상은 유효 환불이다.
+- **fact_refund 원천:** `refunds`를 `order_items`(`channel, order_item_id`)와 `payments`(`channel, payment_id`, `status = SUCCEEDED`)에 조인한다. `payment_date`는 원결제의 결제일이다. `refund_profile_key = {refund_type}-{refund_reason}`이며 사유가 없으면(`refund_reason_code` null) `OTHER`로 둔다. 유효 환불만 포함한다.
 - **이상 주문 제외:** 취소(`order_cancellations`)와 결제 성공이 함께 있는 주문은 `fact_sales_item`에서 제외하고, 그 주문의 환불도 `fact_refund`에서 제외한다(환불 합계 대조를 맞추기 위함). 이상 주문 목록(뷰)은 PoC 이후다.
+- **업무 키 위반 주문 제외 (2026-10-15):** 1.3절의 허용 이벤트 수를 넘는 주문(주문 생성 2건 이상, 결제 성공 2건 이상)은 `fact_sales_item`에서 제외하고, 그 주문의 환불도 `fact_refund`에서 제외한다. 조인으로 상품 행이 늘어 금액이 중복 집계되는 것을 막는 PoC 단순화 선택이다. 제외한 주문 수는 6.6절에서 보고한다.
+- **유효 환불 (2026-10-15):** 환불의 `payment_id`가 `status = SUCCEEDED`인 결제를 가리키고, 환불·상품 행·결제의 `order_id`가 모두 같은 환불만 유효하다. `fact_sales_item`의 환불 합계와 `fact_refund`는 같은 유효 환불 집합만 쓴다. 무효 환불은 Gold에서 제외하고 건수를 6.6절에서 보고한다. Silver 격리 대상이 아니다(테이블 간 판단이기 때문이다).
 - **시각 컬럼:** `payment_at`은 UTC `TIMESTAMP`, `*_date`는 KST `DATE`다.
 
 ### 6.2 Dimension
@@ -320,6 +324,7 @@ Silver는 이벤트를 채널별 행동 맥락으로 해석해 이벤트 유형�
 - Silver에서 Fact를 다시 계산한 결과를 키로 MERGE한다. 키는 `(channel, order_item_id)`, `(channel, refund_id)`다. 대상에 있으면 갱신하고, 없으면 추가하며, 새 결과에 없는 대상 행(예: 나중에 취소가 도착해 제외 대상이 된 주문)은 삭제한다.
 - 결제·환불이 주문·결제보다 먼저 와서 조인이 안 되는 행은 이번 실행에서 빠지고 짝이 도착한 다음 실행에서 반영된다.
 - Dimension은 키로 갱신·추가하며 삭제하지 않는다.
+- **적재 전 검사 (2026-10-15):** MERGE 전에 소스의 PK 중복(`(channel, order_item_id)`, `(channel, refund_id)`)을 검사한다. 중복이 있으면 적재하지 않고 오류로 끝낸다. 대상에 없는 키는 소스 안의 중복이 모두 삽입될 수 있어 MERGE에 맡길 수 없다.
 
 ### 6.5 지표
 
@@ -336,8 +341,9 @@ Silver는 이벤트를 채널별 행동 맥락으로 해석해 이벤트 유형�
 | 환불수량 | `fact_refund.refund_quantity` 합 |
 | 사유별 비중 | 사유별 환불금액 ÷ 전체 환불금액 |
 
-- 분석 기준: 일자(`payment_date`), 결제주(`payment_week`), 채널, 상품, 결제수단, 환불 유형·사유.
+- 분석 기준: 일자(`payment_date`), 결제주(`payment_week`), 결제 시간대(`payment_hour`), 채널, 상품, 결제수단, 환불 유형·사유.
 - 결제주는 KST 결제일(`payment_date`)이 속한 주의 시작일(월요일)이다. `payment_date`에서 계산하며 일자 차원(`dim_date`)은 두지 않는다. 환불 분석의 결제주도 원결제일 기준이다.
+- 결제 시간대(`payment_hour`)는 `fact_sales_item.payment_at`을 KST로 바꾼 시(0~23)다(2026-10-15 추가). `sales_metrics`에만 둔다. `fact_refund`에는 결제 시각 컬럼이 없어 환불 분석에는 시간대 차원을 두지 않는다. 비가산 지표는 시간대 단위로 분자·분모를 다시 집계한다.
 - 비가산 지표는 결제주에서도 그 주의 분자·분모로 다시 집계한다(일별 값의 합이나 평균이 아니다).
 - 결제고객수·객단가·상품결제단가·비율은 비가산이다. 일·채널·상품별 값을 더하지 않고 조회 범위에서 분자·분모를 다시 집계한다.
 - 현재 지표에 방문수·전환율·결제 성공률·취소율은 없다.
@@ -348,3 +354,5 @@ Silver는 이벤트를 채널별 행동 맥락으로 해석해 이벤트 유형�
 - `Σ fact_refund.refund_amount = Σ fact_sales_item.refund_amount`, 환불 수량도 같다.
 - PK 중복 0건. FK 누락 0건(상품·결제수단·환불 프로필·채널이 각 Dimension에 있다).
 - 건수·금액·지표는 `expected.json`과 일치한다.
+- 업무 키 위반 주문 0건, 무효 환불 0건. 0이 아니면 건수를 보고하며 해당 주문·환불은 Gold에서 제외된 상태다.
+- 금액·건수·수량은 기대값과 정확히 일치한다(허용 오차 없음). 비율·평균 지표에만 허용 오차를 둔다.

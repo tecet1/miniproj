@@ -203,10 +203,11 @@ def merge_insert(df, table: str, keys: list[str]) -> None:
     )
 
 
-def make_batch_handler(schema: str, known_skus: set):
+def make_batch_handler(schema: str, known_skus: set, after_batch=None):
     """foreachBatch에 넘길 함수 (batch_df, batch_id)를 만든다. 위 흐름 그림대로 처리한다.
 
     schema와 known_skus는 handle이 기억(클로저)한다. 격리 -> 정상 5개 테이블 순서로 MERGE한다.
+    after_batch(converted, batch_id)가 있으면 MERGE가 모두 끝난 뒤 부른다 (증분 검사 기록: quality/batch_check.py).
     """
     def handle(batch_df, batch_id):
         converted = convert_bronze(batch_df, known_skus)
@@ -214,18 +215,20 @@ def make_batch_handler(schema: str, known_skus: set):
         events = parse_events(dedupe_events(converted))
         for table, build in BUILDERS.items():
             merge_insert(build(events), f"{schema}.{table}", TABLES[table]["pk"])
+        if after_batch:
+            after_batch(converted, batch_id)
 
     return handle
 
 
-def run_silver(spark, bronze_table: str, schema: str, checkpoint_path: str, known_skus: set) -> None:
+def run_silver(spark, bronze_table: str, schema: str, checkpoint_path: str, known_skus: set, after_batch=None) -> None:
     """Bronze를 읽어 foreachBatch로 Silver에 쓰고, 쌓인 분량을 모두 처리하면 끝낸다.
 
     같은 체크포인트로 다시 실행하면 새 Bronze 행만 읽는다. 처음부터 다시 읽어 멱등을 확인하려면 새 체크포인트 경로를 쓴다.
     """
     query = (read_bronze(spark, bronze_table)
              .writeStream
-             .foreachBatch(make_batch_handler(schema, known_skus))
+             .foreachBatch(make_batch_handler(schema, known_skus, after_batch))
              .option("checkpointLocation", checkpoint_path)
              .trigger(availableNow=True)
              .start())

@@ -13,6 +13,7 @@
   8. 격리 행이 Bronze 원본과 같다: 같은 (eh_partition, eh_offset)의 Bronze 행과 channel·payload가 일치 (불일치 0건)
   9. 시나리오 기대값 (plans/03 완료 조건): S23 결제 성공 3건의 결제 시각이 모두 UTC 2026-10-11T15:30:00Z,
      S06 주문 3건(채널당 1건)은 결제 실패 1건 + 성공 1건
+운영 기준(픽스처 + 덤프)은 expected_path에 04_experiments/results/expected_dump.json을 넘긴다 (total이 합친 값).
 비교 함수(compare_*)는 pyspark 없이 로컬에서 테스트한다. Spark 조회 함수는 Databricks에서만 돈다 (미검증).
 """
 import json

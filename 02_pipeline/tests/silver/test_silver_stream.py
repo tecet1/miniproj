@@ -135,6 +135,22 @@ class TestBatchHandler(unittest.TestCase):
         convert.assert_called_once_with("batch", skus)
 
 
+class TestAfterBatchHook(unittest.TestCase):
+    def run_handler(self, after_batch):
+        """처리 순서를 기록해 돌려준다. 병합은 "merge", 훅은 after_batch가 남기는 값."""
+        order = []
+        with mock.patch.object(silver_stream, "convert_bronze", return_value="converted"),              mock.patch.object(silver_stream, "build_quarantine"), mock.patch.object(silver_stream, "dedupe_events"),              mock.patch.object(silver_stream, "parse_events"),              mock.patch.dict(silver_stream.BUILDERS, {"orders": lambda events: "orders_df"}, clear=True),              mock.patch.object(silver_stream, "merge_insert", side_effect=lambda df, table, keys: order.append("merge")):
+            silver_stream.make_batch_handler("s", set(), after_batch(order) if after_batch else None)("batch", 7)
+        return order
+
+    def test_hook_gets_converted_and_batch_id_after_every_merge(self):
+        hook = lambda order: (lambda converted, batch_id: order.append(("hook", converted, batch_id)))   # noqa: E731
+        self.assertEqual(["merge", "merge", ("hook", "converted", 7)], self.run_handler(hook))   # 격리 + orders
+
+    def test_no_hook_is_fine(self):
+        self.assertEqual(["merge", "merge"], self.run_handler(None))
+
+
 class TestModuleShape(unittest.TestCase):
     def test_imports_without_pyspark(self):
         self.assertTrue(callable(silver_stream.run_silver))

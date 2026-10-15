@@ -28,7 +28,7 @@ Silver의 행 단위 UDF 변환을 Spark 표현식으로 바꾸고, 기대값이
 7-D(증분 검증)는 이 WP가 끝난 뒤 별도로 시작한다. 스키마 버전 처리와 상품 SCD는 범위 밖이다.
 
 ## 상태
-상태: 미착수 / 갱신: 2026-10-15 / 지금: - / 다음: 규칙 연결 변경안 제안, 7-B 변환 대상 목록 / 막힘: 없음
+상태: 진행중 / 갱신: 2026-10-15 10:18 / 지금: 합친 기대값(expected_dump.json) 정합성 테스트 추가 완료(로컬 silver 175건 통과, 변이 3종 실패 확인 후 원복), check_silver Databricks 실행은 미검증 / 다음: 사용자 Databricks에서 expected_path=expected_dump.json로 check_silver 실행, 7-B 변환 방안 제안 / 막힘: 없음
 
 ## 공통 규칙 (모든 WP)
 
