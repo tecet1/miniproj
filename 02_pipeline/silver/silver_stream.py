@@ -37,7 +37,7 @@ def read_bronze(spark, table: str):
     """Bronze 테이블을 스트림으로 읽는다. channel이 있는 행만 남긴다 (봉투가 없는 이전 테스트 메시지 제외).
 
     어디까지 읽었는지는 체크포인트가 기억한다. 시각으로 범위를 자르지 않는다.
-    조건은 bronze_check.load_bronze_pairs, silver_check.count_bronze와 같다.
+    조건은 bronze_check.load_bronze_pairs와 같다.
     """
     return spark.readStream.table(table).where(F.col("channel").isNotNull())
 

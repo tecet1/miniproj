@@ -6,9 +6,9 @@
 |---|---|---|
 | `ingestion/` | HTTP 수신(Function)과 Event Hubs 전송, 송신·도착 확인 스크립트 | 완료. 원격에서 72건 도착 확인 |
 | `bronze/` | Event Hubs → `commerce_poc.bronze.events` 적재와 대조 함수, 실행 노트북 | 완료. Databricks에서 72행 확인 |
-| `silver/` | Bronze → 공통 이벤트 → Silver 테이블·Quarantine. 채널별 변환은 `channels/`, 공통 처리는 별도 파일 | 완료. 로컬 테스트와 Databricks 실행으로 `expected.json` 건수 일치 확인 |
+| `silver/` | Bronze → 공통 이벤트 → Silver 테이블·Quarantine. 채널별 변환은 `channels/`, 공통 처리는 별도 파일 | 완료. 로컬 테스트와 Databricks 실행으로 확인(당시 `expected.json` 건수 일치. 기대값 비교는 제거) |
 | `gold/` | Silver → Fact 2개·Dimension 4개. Fact SQL(`gold_sql.py`), Dimension(`dimensions.py`), MERGE(`gold_merge.py`), 실행(`gold_build.py`), 대조(`gold_check.py`), 노트북(`run_gold.py`) | 구현·로컬 테스트 완료. 일자 차원 제외(2026-10-14) 후 Databricks 재실행에서 건수 일치와 정합성 체크 OK(사용자 보고) |
-| `tests/` | `bronze`, `contracts`, `gold`, `ingestion`, `serving`, `silver` 하위 폴더. 고정 입력과 독립 기대값으로 비교한다. | 로컬 실행 |
+| `tests/` | `bronze`, `contracts`, `gold`, `ingestion`, `serving`, `silver` 하위 폴더. 고정 입력과 규칙으로 확인한다 (정답 파일 비교는 두지 않는다). | 로컬 실행 |
 
 Metric View와 대시보드(`03_serving`)는 구현·로컬 테스트 완료, Databricks 실행과 대시보드 출력은 사용자 보고로 확인했다(기간·채널 필터 추가분은 미검증). 단계별 목표와 완료 조건은 `plans/`를 따른다.
 

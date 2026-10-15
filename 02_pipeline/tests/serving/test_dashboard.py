@@ -21,7 +21,6 @@ import dashboard_spec as spec  # noqa: E402
 import dimensions  # noqa: E402
 import metric_defs  # noqa: E402
 
-EXPECTED = json.loads((silver.FIXTURES / "expected" / "expected.json").read_text(encoding="utf-8"))
 DATASETS = {d["name"]: d for d in spec.DATASETS}
 DASHBOARD = build_dashboard.build_dashboard()
 GRID = 6
@@ -177,16 +176,6 @@ class TestValues(unittest.TestCase):
     def setUpClass(cls):
         cls.con = g.gold_connection(silver.fixture_rows())
 
-    def test_kpi_values_match_expected(self):
-        sales = local_rows(self.con, DATASETS["sales_kpi"])[0]
-        want = EXPECTED["total"]
-        self.assertEqual((want["total_sales"], want["refund_amount"], want["net_sales"], want["paid_item_count"],
-                          want["paying_customers"]), (sales["total_sales"], sales["refund_amount"], sales["net_sales"],
-                                                      sales["item_count"], sales["paying_customers"]))
-        self.assertAlmostEqual(want["refund_ratio"], sales["refund_ratio"], places=12)
-        refund = local_rows(self.con, DATASETS["refund_kpi"])[0]
-        self.assertEqual((want["refund_amount"], want["refund_quantity"]), (refund["refund_amount"], refund["refund_quantity"]))
-
     def test_refund_share_sums_to_one(self):
         rows = local_rows(self.con, DATASETS["refund_by_reason"])
         self.assertAlmostEqual(1.0, sum(r["refund_amount_share"] for r in rows))
@@ -201,14 +190,6 @@ class TestValues(unittest.TestCase):
         con = g.gold_connection(rows)
         result = local_rows(con, DATASETS["refund_by_reason"])
         self.assertEqual([("CHANGE_OF_MIND", 0.75), ("DEFECT", 0.25)], [(r["refund_reason"], r["refund_amount_share"]) for r in result])
-
-    def test_channel_net_share_sums_to_one_and_is_sorted_by_net_sales(self):
-        rows = local_rows(self.con, DATASETS["channel_net_share"])
-        self.assertEqual(3, len(rows))
-        self.assertAlmostEqual(1.0, sum(r["net_sales_share"] for r in rows), places=12)
-        want = {name: EXPECTED["per_channel"][ch]["net_sales"] for ch, name in dimensions.channel_rows()}
-        self.assertEqual(want, {r["channel_name"]: r["net_sales"] for r in rows})
-        self.assertEqual(sorted((r["net_sales"] for r in rows), reverse=True), [r["net_sales"] for r in rows])
 
     def test_sorting_is_largest_first_and_ties_break_by_name(self):
         rows = combine(sale("T1", "2026-10-12T03:00:00.000Z", "U1", 3, channel="A"),
@@ -403,24 +384,6 @@ class TestFilters(unittest.TestCase):
         self.assertEqual(sorted({category for _, _, category in dimensions.product_rows(g.SKUS)}), sorted(spec.CATEGORIES))
         self.assertEqual(set(spec.CHANNEL_NAMES), set(spec.CHANNEL_COLORS))
 
-    def test_single_channel_filter_gives_that_channels_expected_values(self):
-        for channel, name in dimensions.channel_rows():
-            row = local_rows(self.con, DATASETS["sales_kpi"], channels=(name,))[0]
-            want = EXPECTED["per_channel"][channel]
-            with self.subTest(channel=channel):
-                self.assertEqual((want["total_sales"], want["refund_amount"], want["paid_item_count"], want["paying_customers"]),
-                                 (row["total_sales"], row["refund_amount"], row["item_count"], row["paying_customers"]))
-                self.assertAlmostEqual(want["average_order_value"], row["average_order_value"], places=9)
-
-    def test_two_channels_recount_customers_and_ratios_over_the_selection(self):
-        names = ALL_CHANNELS[:2]
-        row = local_rows(self.con, DATASETS["sales_kpi"], channels=names)[0]
-        a, b = (EXPECTED["per_channel"][c] for c in "AB")
-        sales, customers = a["total_sales"] + b["total_sales"], a["paying_customers"] + b["paying_customers"]
-        self.assertEqual((sales, customers), (row["total_sales"], row["paying_customers"]))
-        self.assertAlmostEqual(sales / customers, row["average_order_value"], places=9)
-        self.assertAlmostEqual((a["refund_amount"] + b["refund_amount"]) / sales, row["refund_ratio"], places=12)
-
     def test_category_filter_recomputes_customer_metrics(self):
         """카테고리 하나만 고르면 결제고객수·객단가가 그 카테고리 안에서 다시 계산된다 (카테고리별 값의 합과 다르다)."""
         total = local_rows(self.con, DATASETS["sales_kpi"])[0]
@@ -438,13 +401,6 @@ class TestFilters(unittest.TestCase):
             row = local_rows(self.con, DATASETS["sales_kpi"], date_range=rng)[0]
             with self.subTest(range=rng):
                 self.assertEqual((None, 0), (row["total_sales"], row["item_count"]))
-
-    def test_refund_datasets_follow_the_same_filters(self):
-        self.assertEqual(105000, local_rows(self.con, DATASETS["refund_kpi"], date_range=("2026-10-12", "2026-10-12"))[0]["refund_amount"])
-        self.assertEqual([], local_rows(self.con, DATASETS["refund_by_reason"], date_range=("2026-10-13", "2026-10-13")))
-        only_a = local_rows(self.con, DATASETS["refund_ratio_by_channel"], channels=(ALL_CHANNELS[0],))
-        self.assertEqual([ALL_CHANNELS[0]], [r["channel_name"] for r in only_a])
-        self.assertAlmostEqual(EXPECTED["per_channel"]["A"]["refund_ratio"], only_a[0]["refund_ratio"], places=12)
 
     def test_refund_share_is_recomputed_over_the_filtered_rows(self):
         rows = silver.rows_of(

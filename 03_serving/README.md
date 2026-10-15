@@ -4,7 +4,7 @@
 
 | 폴더 | 내용 |
 |---|---|
-| `metric_views/` | `sales_metrics`·`refund_metrics` 정의(`metric_defs.py`), 생성(`create_metric_views.py`), 기대값 대조(`metric_check.py`), 실행 노트북(`run_metric_views.py`) |
+| `metric_views/` | `sales_metrics`·`refund_metrics` 정의(`metric_defs.py`), 생성(`create_metric_views.py`), 자체 정합성 확인(`metric_check.py`), 실행 노트북(`run_metric_views.py`) |
 | `dashboards/` | 대시보드 정의(`dashboard_spec.py`), JSON 생성기(`build_dashboard.py`), 생성 결과(`commerce_poc.lvdash.json`), 화면 구성 가이드(`화면_구성_가이드.md`) |
 | `genie/` | 대시보드 이후의 후속 범위. 아직 만들지 않았다. |
 | `reference/` | 벤치마크 참고 자료(스마트스토어 캡처 등). 계정·사업자 정보가 있을 수 있어 외부 공개 전에 마스킹한다. |

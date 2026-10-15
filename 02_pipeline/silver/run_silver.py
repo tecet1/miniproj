@@ -50,7 +50,7 @@ run_silver(spark, BRONZE_TABLE, SCHEMA, CHECKPOINT, load_known_skus(), make_afte
 
 # COMMAND ----------
 
-# 비어 있으면 expected.json과 일치한다
+# 비어 있으면 자체 정합성 검사를 통과한 것이다
 print(check_silver(spark, SCHEMA, BRONZE_TABLE) or "OK")
 
 # COMMAND ----------

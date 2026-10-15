@@ -27,7 +27,7 @@ print(create_metric_views(spark, GOLD_SCHEMA, SERVING_SCHEMA))
 
 # COMMAND ----------
 
-# 비어 있으면 expected.json과 일치한다
+# 비어 있으면 자체 정합성 검사를 통과한 것이다
 print(check_metric_views(spark, SERVING_SCHEMA) or "OK")
 
 # COMMAND ----------

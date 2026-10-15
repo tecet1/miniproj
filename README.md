@@ -22,7 +22,7 @@
 
 | 폴더 | 내용 |
 |---|---|
-| `01_contracts/` | 이벤트 명세, 시나리오·상품 기준 데이터, 고정 입력(fixtures)과 독립 기대값, 이벤트 생성기 |
+| `01_contracts/` | 이벤트 명세, 시나리오·상품 기준 데이터, 고정 입력(fixtures), 이벤트 생성기 |
 | `02_pipeline/` | `ingestion`(수신·전송), `bronze`, `silver`, `gold`, `tests` |
 | `03_serving/` | Metric View(`metric_views/`)와 대시보드(`dashboards/`), 벤치마크 참고 자료(`reference/`) |
 | `04_experiments/` | 핵심 기능 완료 후의 부하·확장성·AI 비교 실험 |
@@ -35,7 +35,7 @@
 |---|---|
 | 계획 01. 생성기, 수신·전송 | 완료. 채널당 24건, 합계 72건을 Event Hubs에서 확인했다 (2026-10-12). 잘못된 채널의 400 응답과 5xx 재시도는 로컬 단위 테스트로만 확인했다. |
 | 계획 02. Bronze 적재 | 완료. Databricks 서버리스에서 72행과 `(channel, payload)` 일치를 확인하고 재실행해도 행 수가 유지됨을 확인했다 (2026-10-12). |
-| 계획 03. Silver 변환 | 완료. 로컬 테스트와 Databricks 실행(서버리스)으로 `expected.json` 건수 일치를 확인했다 (2026-10-13). |
+| 계획 03. Silver 변환 | 완료. 로컬 테스트와 Databricks 실행(서버리스)으로 확인했다 (2026-10-13, 당시 `expected.json` 건수 일치. 기대값 비교는 2026-10-15에 제거). |
 | 계획 04. Gold | 완료. 2026-10-14 일자 차원(`dim_date`) 제외를 반영했다. 로컬 테스트와 Databricks 재실행(사용자 보고): 테이블 건수 일치, 정합성 체크 OK. 출력 원문은 받지 못했다. |
 | 계획 05. Metric View, 대시보드 | 완료 (일자 속성 기준 제외 반영, 2026-10-14). Databricks 재생성 후 채널별 `MEASURE()` 조회와 정합성 체크 OK(사용자 보고, 2026-10-14). 제외 이전 확인(사용자 보고, 2026-10-13): `check_metric_views` OK, 대시보드가 화면에 정상 출력. 기간·채널 필터 추가분은 **미검증**. 대시보드 파일은 Databricks에서 내려받은 것과 `uiSettings`만 다르다. |
 
@@ -58,6 +58,6 @@ python .\01_contracts\src\generate.py
 
 ## 문서의 우선순위
 
-최신 사용자 지시 > `AGENTS.md` > `plans/` > 각 폴더 README. 명세(`01_contracts/contracts/`)가 바뀌면 명세 → 입력 픽스처·독립 기대값 → 구현 → 테스트 순서로 진행한다. 독립 기대값은 구현을 맞추기 위해 수정하지 않는다.
+최신 사용자 지시 > `AGENTS.md` > `plans/` > 각 폴더 README. 명세(`01_contracts/contracts/`)가 바뀌면 명세 → 입력 픽스처 → 구현 → 테스트 순서로 진행한다.
 
 `03_serving/reference/`의 스마트스토어 캡처에는 계정·사업자 정보가 있을 수 있다. 외부 공개 전에 마스킹한다.

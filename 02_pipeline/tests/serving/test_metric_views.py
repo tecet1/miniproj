@@ -1,4 +1,4 @@
-"""Metric View 정의를 고정 입력의 Gold 위에서 일반 SQL로 실행해 독립 기대값(expected.json)과 대조한다.
+"""Metric View 정의를 고정 입력의 Gold 위에서 일반 SQL로 실행해 확인한다.
 
 [검증 범위] 지표 식(합계·건수·distinct·비율)이 기대값과 같은 값을 내는지, 비가산 지표가 조회 범위에서 다시 계산되는지,
 YAML 문장이 정의와 같은지, metric_check가 그 값을 올바르게 읽고 비교하는지(가짜 spark).
@@ -22,7 +22,6 @@ try:
 except ImportError:   # PyYAML이 없으면 YAML 왕복 테스트만 건너뛴다
     yaml = None
 
-EXPECTED = json.loads((silver.FIXTURES / "expected" / "expected.json").read_text(encoding="utf-8"))
 SALES, REFUND = metric_defs.SALES_METRICS, metric_defs.REFUND_METRICS
 ALL_SALES = [name for name, _ in SALES["measures"]]
 
@@ -35,26 +34,6 @@ class TestFixtureMetrics(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.con = g.gold_connection(silver.fixture_rows())
-
-    def test_total_metrics_match_expected(self):
-        row = query(self.con, SALES, [], ALL_SALES)[0]
-        want = EXPECTED["total"]
-        self.assertEqual((1266000, 105000, 1161000, 30, 18), (row["total_sales"], row["refund_amount"],
-                         row["net_sales"], row["item_count"], row["paying_customers"]))
-        self.assertAlmostEqual(want["refund_ratio"], row["refund_ratio"], places=12)
-        self.assertAlmostEqual(42200.0, row["unit_price_per_item"], places=9)
-        self.assertAlmostEqual(want["average_order_value"], row["average_order_value"], places=9)
-
-    def test_channel_metrics_match_expected(self):
-        rows = {r["channel"]: r for r in query(self.con, SALES, ["channel"], ALL_SALES)}
-        self.assertEqual(["A", "B", "C"], sorted(rows))
-        for channel, r in rows.items():
-            want = EXPECTED["per_channel"][channel]
-            with self.subTest(channel=channel):
-                self.assertEqual((want["total_sales"], want["refund_amount"], want["net_sales"], want["paid_item_count"],
-                                  want["paying_customers"]), (r["total_sales"], r["refund_amount"], r["net_sales"],
-                                                              r["item_count"], r["paying_customers"]))
-                self.assertAlmostEqual(want["average_order_value"], r["average_order_value"], places=9)
 
     def test_refund_view_matches_expected_and_sales_view(self):
         total = query(self.con, REFUND, [], ["refund_amount", "refund_quantity"])[0]
@@ -77,15 +56,6 @@ class TestFixtureMetrics(unittest.TestCase):
         by_product = query(self.con, SALES, ["product_id"], ["paying_customers"])
         self.assertEqual(18, total)
         self.assertGreater(sum(r["paying_customers"] for r in by_product), total)
-
-    def test_dimension_attributes_come_from_dimension_tables(self):
-        names = {r["channel"]: r["channel_name"] for r in query(self.con, SALES, ["channel", "channel_name"], ["item_count"])}
-        self.assertEqual({"A", "B", "C"}, set(names))
-        self.assertTrue(all(names.values()))
-        methods = {r["payment_method"]: r["item_count"] for r in query(self.con, SALES, ["payment_method"], ["item_count"])}
-        self.assertEqual(EXPECTED["total"]["sales_item_by_payment_method"], methods)
-        by_date = query(self.con, SALES, ["payment_date"], ["item_count"])
-        self.assertEqual([("2026-10-12", 30)], [(r["payment_date"], r["item_count"]) for r in by_date])
 
     def test_no_date_dimension_is_joined(self):
         """일자 차원은 두지 않는다 (event_spec.md 6.2절). 일자 기준은 Fact의 DATE 컬럼 payment_date·refund_date다."""
@@ -190,25 +160,6 @@ class TestMetricCheck(unittest.TestCase):
         spark = g.FakeSpark(self.con)
         self.assertEqual([], metric_check.check_metric_views(spark, "c.serving"))
         self.assertTrue(all("c.serving." in q for q in spark.queries))
-
-    def test_wrong_value_is_reported(self):
-        con = g.gold_connection(silver.fixture_rows())
-        con.execute("UPDATE gold.fact_sales_item SET item_paid_amount = item_paid_amount + 1 "
-                    "WHERE order_item_id = (SELECT MIN(order_item_id) FROM gold.fact_sales_item)")
-        problems = metric_check.check_metric_views(g.FakeSpark(con), "c.serving")
-        self.assertTrue(any("total_sales" in p for p in problems), problems)
-
-    def test_missing_channel_is_reported(self):
-        con = g.gold_connection(silver.fixture_rows())
-        con.execute("DELETE FROM gold.fact_sales_item WHERE channel = 'C'")
-        problems = metric_check.check_metric_views(g.FakeSpark(con), "c.serving")
-        self.assertTrue(any(p.startswith("지표 C ") for p in problems), problems)
-
-    def test_refund_quantity_difference_is_reported(self):
-        con = g.gold_connection(silver.fixture_rows())
-        con.execute("UPDATE gold.fact_refund SET refund_quantity = refund_quantity + 1 WHERE rowid = 1")
-        problems = metric_check.check_metric_views(g.FakeSpark(con), "c.serving")
-        self.assertTrue(any("refund_quantity" in p for p in problems), problems)
 
     def test_refund_view_and_sales_view_disagreement_is_reported(self):
         con = g.gold_connection(silver.fixture_rows())

@@ -73,7 +73,7 @@
 ## 지금 들어 있는 규칙
 
 - 행 규칙 9개: 기존 `silver/validate_values.py`의 값 검사 8개 + SKU 기준 데이터 검사(`validate_skus.py`).
-- 집합 규칙 9개: Silver PK 중복(주문·결제·환불은 증분, 상품 행은 전수), 환불→상품 행 참조, 격리 행의 원본 보존, Gold PK 중복 2개, Gold 상품 Dimension 참조. 나머지 `check_silver`/`check_gold` 항목(건수 균형, 금액 정합성, 배송비 규칙, 다른 Dimension 참조 등)은 카드 7-C에서 옮긴다.
+- 집합 규칙 9개: Silver PK 중복(주문·결제·환불은 증분, 상품 행은 전수), 환불→상품 행 참조, 격리 행의 원본 보존, Gold PK 중복 2개, Gold 상품 Dimension 참조. `check_silver`/`check_gold`의 정답(기대값) 비교는 2026-10-15에 제거했다. 남은 자체 정합성 항목(금액 정합성, 배송비 규칙, 다른 Dimension 참조 등)은 카드 7-C에서 규칙으로 옮긴다.
 
 ## 한계
 

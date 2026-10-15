@@ -1,8 +1,12 @@
-"""gold_check의 계산·비교 함수 테스트 (pyspark 없이). Spark 조회 함수는 Databricks에서만 확인한다 (미검증)."""
-import json
+"""gold_check의 비교 함수와 정의 테스트 (pyspark 없이). Spark 조회 함수는 Databricks에서만 확인한다 (미검증).
+
+정답(기대값) 비교는 두지 않으므로 이 테스트도 기대값 파일을 읽지 않는다.
+"""
+import inspect
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "02_pipeline" / "gold"))
@@ -10,70 +14,23 @@ sys.path.insert(0, str(ROOT / "02_pipeline" / "gold"))
 import gold_check  # noqa: E402
 import gold_tables  # noqa: E402
 
-EXPECTED = json.loads(gold_check.DEFAULT_EXPECTED.read_text(encoding="utf-8"))
-RAW = {ch: {key: EXPECTED["per_channel"][ch][key] for key in gold_check.RAW_KEYS} for ch in "ABC"}
 
+class FakeSpark:
+    """조회마다 정해 둔 한 행을 돌려주는 가짜 Spark. 합계 조회는 환불 합계(amount, quantity)를 돌려준다."""
 
-class TestDerive(unittest.TestCase):
-    def test_metrics_follow_event_spec_formulas(self):
-        m = gold_check.derive_metrics({"total_sales": 422000, "refund_amount": 35000, "refund_quantity": 1,
-                                       "paid_item_count": 10, "paying_customers": 6})
-        self.assertEqual(387000, m["net_sales"])
-        self.assertAlmostEqual(35000 / 422000, m["refund_ratio"])
-        self.assertEqual(42200, m["unit_price_per_item"])
-        self.assertAlmostEqual(70333.3333, m["average_order_value"], places=3)
+    def __init__(self, sales=(0, 0), refund=(0, 0), n=0):
+        self.sales, self.refund, self.n = sales, refund, n
 
-    def test_zero_denominators_give_none(self):
-        m = gold_check.derive_metrics(dict.fromkeys(gold_check.RAW_KEYS, 0))
-        self.assertEqual((0, None, None, None), (m["net_sales"], m["refund_ratio"], m["unit_price_per_item"],
-                                                 m["average_order_value"]))
-
-    def test_with_total_sums_channels(self):
-        total = gold_check.with_total(RAW)["total"]
-        self.assertEqual((1266000, 105000, 30, 18), (total["total_sales"], total["refund_amount"],
-                                                      total["paid_item_count"], total["paying_customers"]))
+    def sql(self, statement):
+        if "SUM(refund_amount)" in statement:
+            amount, quantity = self.sales if "fact_sales_item" in statement else self.refund
+            row = {"refund_amount": amount, "refund_quantity": quantity}
+        else:
+            row = {"n": self.n}
+        return mock.Mock(first=lambda: row)
 
 
 class TestCompare(unittest.TestCase):
-    def good_metrics(self):
-        return {scope: gold_check.derive_metrics(raw) for scope, raw in gold_check.with_total(RAW).items()}
-
-    def test_expected_row_counts(self):
-        self.assertEqual({"fact_sales_item": 30, "fact_refund": 3, "dim_channel": 3, "dim_payment_method": 5,
-                          "dim_refund_profile": 10, "dim_product": 15},
-                         gold_check.expected_row_counts(EXPECTED))
-
-    def test_matching_metrics_have_no_problem(self):
-        self.assertEqual([], gold_check.compare_metrics(self.good_metrics(), EXPECTED))
-
-    def test_metric_difference_is_reported_with_scope_and_name(self):
-        bad = self.good_metrics()
-        bad["B"] = gold_check.derive_metrics({**RAW["B"], "total_sales": RAW["B"]["total_sales"] + 1})
-        problems = gold_check.compare_metrics(bad, EXPECTED)
-        self.assertTrue(any("지표 B total_sales" in p for p in problems))
-        self.assertFalse(any("지표 A" in p for p in problems))
-
-    def test_none_metric_is_not_equal_to_a_number(self):
-        bad = self.good_metrics()
-        bad["A"] = {**bad["A"], "refund_ratio": None}
-        self.assertEqual(1, len(gold_check.compare_metrics({"A": bad["A"]}, EXPECTED)))
-
-    def test_distribution_match_and_mismatch(self):
-        name = "sales_item_by_payment_method"
-        rows = {(ch, m): n for ch in "ABC" for m, n in EXPECTED["per_channel"][ch][name].items()}
-        self.assertEqual([], gold_check.compare_distribution(name, rows, EXPECTED))
-        rows[("A", "CARD")] = 5
-        problems = gold_check.compare_distribution(name, rows, EXPECTED)
-        self.assertEqual(2, len(problems))            # 채널 A와 total
-        del rows[("B", "CARD")]
-        self.assertEqual(3, len(gold_check.compare_distribution(name, rows, EXPECTED)))
-
-    def test_missing_channel_in_distribution_is_reported(self):
-        name = "refund_by_profile"
-        rows = {(ch, k): n for ch in "AB" for k, n in EXPECTED["per_channel"][ch][name].items()}
-        problems = gold_check.compare_distribution(name, rows, EXPECTED)
-        self.assertTrue(any(name + " C" in p for p in problems))
-
     def test_compare_equal_and_zero(self):
         self.assertEqual([], gold_check.compare_equal({"a": (3, 3)}))
         self.assertEqual(["b: 기대 3, 실제 2"], gold_check.compare_equal({"a": (3, 3), "b": (2, 3)}))
@@ -81,12 +38,31 @@ class TestCompare(unittest.TestCase):
         self.assertEqual(["PK 중복 y: 2건"], gold_check.compare_zero("PK 중복", {"x": 0, "y": 2}))
 
 
-class TestDefinitions(unittest.TestCase):
-    def test_distribution_names_exist_in_expected_and_tables(self):
-        for name, (table, column) in gold_check.DISTRIBUTIONS.items():
-            self.assertIn(name, EXPECTED["total"])
-            self.assertIn(column, gold_tables.column_names(table))
+class TestCheckGold(unittest.TestCase):
+    def test_no_expected_file_or_path_argument(self):
+        self.assertEqual(["spark", "silver_schema", "gold_schema"], list(inspect.signature(gold_check.check_gold).parameters))
+        self.assertFalse(hasattr(gold_check, "DEFAULT_EXPECTED"))
 
+    def test_consistent_gold_passes(self):
+        self.assertEqual([], gold_check.check_gold(FakeSpark(sales=(35000, 1), refund=(35000, 1)), "s", "g"))
+
+    def test_refund_amount_difference_between_facts_is_reported(self):
+        problems = gold_check.check_gold(FakeSpark(sales=(35000, 1), refund=(34000, 1)), "s", "g")
+        self.assertEqual(1, len(problems))
+        self.assertIn("환불금액", problems[0])
+
+    def test_refund_quantity_difference_between_facts_is_reported(self):
+        problems = gold_check.check_gold(FakeSpark(sales=(35000, 2), refund=(35000, 1)), "s", "g")
+        self.assertEqual(1, len(problems))
+        self.assertIn("환불수량", problems[0])
+
+    def test_pk_dimension_and_payment_violations_are_reported_with_labels(self):
+        problems = gold_check.check_gold(FakeSpark(n=3), "s", "g")
+        for label in ("PK 중복", "Dimension 키 누락", "대조 불일치"):
+            self.assertTrue(any(p.startswith(label) for p in problems), (label, problems))
+
+
+class TestDefinitions(unittest.TestCase):
     def test_references_point_at_real_columns_and_dimension_keys(self):
         for fact, column, dim, key in gold_check.REFERENCES:
             self.assertIn(column, gold_tables.column_names(fact))

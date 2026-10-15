@@ -1,14 +1,13 @@
-"""독립 기대값 계산. 생성기·파이프라인 코드를 import하지 않고, 시나리오와 SKU만 읽어서 계산한다.
+"""시나리오에서 건수·금액을 계산한다 (덤프 기대값 생성 build_dump가 쓴다). 생성기·파이프라인 코드를 import하지 않고, 시나리오와 SKU만 읽는다.
+
+고정 픽스처용 expected.json과 그 비교 검증은 2026-10-15에 제거했다. 이 모듈은 덤프(04_experiments) 전용으로 남겨 두었다.
 
 (생성기와 로직을 공유하면 같은 실수를 하고도 서로 일치해 버리기 때문이다.)
 이 파일은 canonical.py, pricing.py 등을 import하면 안 된다.
 """
-import json
 from collections import Counter
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
 CHANNELS = ("A", "B", "C")
 COUNT_KEYS = ("bronze_rows", "silver_orders", "silver_order_items", "silver_payments",
               "silver_order_cancellations", "silver_refunds", "quarantine", "fact_sales_item",
@@ -125,19 +124,3 @@ def _add_metrics(counts: dict) -> dict:
     counts["unit_price_per_item"] = counts["total_sales"] / counts["paid_item_count"]
     counts["average_order_value"] = counts["total_sales"] / counts["paying_customers"]
     return counts
-
-
-def main() -> None:
-    """compute_expected 결과를 01_contracts/data_fixtures/expected/expected.json 에 쓴다."""
-    contracts = ROOT / "01_contracts" / "contracts"
-    scenarios = json.loads((contracts / "scenarios.json").read_text(encoding="utf-8"))["scenarios"]
-    skus = json.loads((contracts / "skus.json").read_text(encoding="utf-8"))["skus"]
-    out = ROOT / "01_contracts" / "data_fixtures" / "expected" / "expected.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    text = json.dumps(compute_expected(scenarios, skus), ensure_ascii=False, indent=2)
-    out.write_text(text + "\n", encoding="utf-8", newline="\n")
-    print(f"wrote {out}")
-
-
-if __name__ == "__main__":
-    main()

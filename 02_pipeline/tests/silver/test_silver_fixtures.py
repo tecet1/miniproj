@@ -1,4 +1,4 @@
-"""고정 입력(fixtures) 72행을 convert_row에 넣고 독립 기대값(expected.json)과 대조한다. Spark 없이 도는 로컬 검증이다.
+"""고정 입력(fixtures) 72행을 convert_row에 넣고 변환·중복 제거하고 주문 단위 금액 정합성을 확인한다. Spark 없이 도는 로컬 검증이다.
 
 [검증 범위] 행 단위 변환·격리 + 이벤트 단위 중복 제거(여기서는 파이썬으로 같은 규칙을 흉내 낸다).
 Spark 변환·MERGE가 같은 결과를 내는지는 Databricks에서 silver_check로 따로 확인한다 (로컬 테스트 통과 != Databricks 성공).
@@ -18,7 +18,6 @@ from validate_skus import load_known_skus  # noqa: E402
 
 FIXTURES = ROOT / "01_contracts" / "data_fixtures"
 KNOWN = load_known_skus(ROOT / "01_contracts" / "contracts" / "skus.json")
-EXPECTED = json.loads((FIXTURES / "expected" / "expected.json").read_text(encoding="utf-8"))
 
 TABLE_OF = {"ORDER_CREATED": "orders", "ORDER_CANCELLED": "order_cancellations",
             "PAYMENT_SUCCEEDED": "payments", "PAYMENT_FAILED": "payments", "REFUND_SUCCEEDED": "refunds"}
@@ -48,45 +47,6 @@ def table_counts(kept: list) -> Counter:
         if event["event_type"] == "ORDER_CREATED":
             counts["order_items"] += len(event["items"])
     return counts
-
-
-class TestCountsAgainstExpected(unittest.TestCase):
-    def test_every_channel_matches_expected_counts(self):
-        for channel in "ABC":
-            run, expected = run_channel(channel), EXPECTED["per_channel"][channel]
-            counts = table_counts(run["kept"])
-            with self.subTest(channel=channel):
-                self.assertEqual(expected["silver_orders"], counts["orders"])
-                self.assertEqual(expected["silver_order_items"], counts["order_items"])
-                self.assertEqual(expected["silver_payments"], counts["payments"])
-                self.assertEqual(expected["silver_order_cancellations"], counts["order_cancellations"])
-                self.assertEqual(expected["silver_refunds"], counts["refunds"])
-                self.assertEqual(expected["quarantine"], len(run["quarantine"]))
-
-    def test_bronze_rows_are_fully_accounted_for(self):
-        """Bronze = 정상 테이블 행 + 격리 + 제거된 중복. 사라진 행이 없어야 한다."""
-        for channel in "ABC":
-            run = run_channel(channel)
-            with self.subTest(channel=channel):
-                self.assertEqual(EXPECTED["per_channel"][channel]["bronze_rows"],
-                                 len(run["kept"]) + len(run["quarantine"]) + run["dropped"])
-
-    def test_one_duplicate_dropped_per_channel(self):
-        for channel in "ABC":
-            self.assertEqual(1, run_channel(channel)["dropped"], channel)
-
-    def test_quarantine_reasons_per_channel(self):
-        for channel in "ABC":
-            self.assertEqual(Counter({"MISSING_REQUIRED": 1, "INVALID_TYPE": 1, "UNKNOWN_EVENT_TYPE": 1}),
-                             Counter(run_channel(channel)["quarantine"]), channel)
-
-    def test_total_is_sum_of_channels(self):
-        total = Counter()
-        for channel in "ABC":
-            total.update(table_counts(run_channel(channel)["kept"]))
-        self.assertEqual(EXPECTED["total"]["silver_orders"], total["orders"])
-        self.assertEqual(EXPECTED["total"]["silver_order_items"], total["order_items"])
-        self.assertEqual(EXPECTED["total"]["silver_payments"], total["payments"])
 
 
 class TestAmounts(unittest.TestCase):

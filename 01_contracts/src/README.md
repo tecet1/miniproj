@@ -9,7 +9,7 @@
 scenarios.json ─► scenario_loader ─► scenario_validator ─► canonical ─► channel_a/b/c ─► (faults) ─► generate ─► events.jsonl
 skus.json      ─►                      │ pricing                       │ timeutil
                                        └ 금액·배송비·환불 계산           └ 채널별 시각 형식
-expected.py: scenarios.json, skus.json 만 읽어 기대값 계산 (위 모듈을 import하지 않음)
+expected.py: 덤프 기대값(04_experiments) 계산 전용. 고정 픽스처 기대값(expected.json)은 제거했다
 ```
 
 | 모듈 | 하는 일 | 알아야 할 것 |
@@ -23,7 +23,7 @@ expected.py: scenarios.json, skus.json 만 읽어 기대값 계산 (위 모듈�
 | `channel_a/b/c` | 중립 이벤트 → 채널 원본 dict | 필드명·코드·시각 형식만 다름. 매핑표는 이미 채워져 있음 |
 | `faults` | 원본에 오류 주입 | 채널별 위치는 `FAULT_PATHS` |
 | `generate` | 줄 만들기와 파일 쓰기 | `{"channel","payload"}` 한 줄 |
-| `expected` | 독립 기대값 | 생성기와 로직을 공유하지 않는다. Gold 분포(KST 일자 등)와 이상 주문 제외 규칙을 포함한다 |
+| `expected` | 덤프 기대값 계산 | 덤프 전용으로 남겼다. 고정 픽스처의 기대값 파일과 비교 검증은 제거했다 |
 
 ## 모듈과 테스트
 
@@ -40,7 +40,7 @@ expected.py: scenarios.json, skus.json 만 읽어 기대값 계산 (위 모듈�
 | 6 | `channel_a.py`, `channel_b.py`, `channel_c.py` | `test_channel_a`, `test_channel_b`, `test_channel_c` |
 | 7 | `faults.py` | `test_faults` |
 | 8 | `generate.py` | `test_generate` |
-| 9 | `expected.py` | `test_expected` |
+| 9 | `expected.py` (덤프 전용) | `test_expected` |
 
 ## 실행 (프로젝트 루트, PowerShell)
 
