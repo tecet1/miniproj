@@ -11,6 +11,7 @@
 
 import os
 import sys
+from datetime import datetime
 
 sys.path.append(os.path.abspath("../quality"))   # 노트북 폴더 기준. Git folder에서 quality 모듈을 찾는다 (미검증)
 
@@ -56,7 +57,9 @@ print(check_silver(spark, SCHEMA, BRONZE_TABLE) or "OK")
 # COMMAND ----------
 
 # 재실행 검증: 새 체크포인트로 Bronze를 처음부터 다시 읽어도 건수가 그대로여야 한다 (insert-only MERGE의 멱등성)
-run_silver(spark, BRONZE_TABLE, SCHEMA, CHECKPOINT + "_rerun", load_known_skus(), make_after_batch(SCHEMA))
+# 실행할 때마다 새 체크포인트 경로를 쓴다 (고정 경로면 두 번째부터는 이미 끝까지 읽은 체크포인트라 새로 읽는 행이 없다)
+rerun_checkpoint = f"{CHECKPOINT}_rerun_{datetime.now():%Y%m%d%H%M%S}"
+run_silver(spark, BRONZE_TABLE, SCHEMA, rerun_checkpoint, load_known_skus(), make_after_batch(SCHEMA))
 print(check_silver(spark, SCHEMA, BRONZE_TABLE) or "OK")
 
 # COMMAND ----------

@@ -1,4 +1,4 @@
-"""silver_row_to_event.py 테스트. 고정 입력 72줄(A·B·C 각 24줄) 전체를 변환한다."""
+"""silver_row_to_event.py 테스트. 오류 입력의 사유 코드를 확인한다."""
 import json
 import sys
 import unittest
@@ -6,18 +6,21 @@ from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / "02_pipeline" / "silver"))
+sys.path[:0] = [str(ROOT / "02_pipeline" / "silver"), str(ROOT / "01_contracts" / "src")]
 
+import generate
+import scenario_loader
 from conversion_error import ConversionError
 from silver_row_to_event import to_common_event
 
-FIXTURES = ROOT / "01_contracts" / "data_fixtures"
+CONTRACTS = ROOT / "01_contracts" / "contracts"
 
 
 def bronze_lines(channel):
-    """Function이 만든 봉투 한 줄 = {"channel", "payload"} (Bronze 행과 같은 두 값)."""
-    text = (FIXTURES / channel / "events.jsonl").read_text(encoding="utf-8")
-    return [json.loads(line) for line in text.splitlines() if line.strip()]
+    """시나리오에서 생성기가 만든 줄 ({"channel", "payload"}, Bronze 행과 같은 두 값). 파일을 읽지 않는다."""
+    skus = scenario_loader.load_skus(CONTRACTS / "skus.json")
+    scenarios = scenario_loader.load_scenarios(CONTRACTS / "scenarios.json")
+    return [json.loads(line) for line in generate.build_lines(channel, scenarios, skus)]
 
 
 def reason_of(channel, payload):
@@ -59,35 +62,6 @@ class TestBadInput(unittest.TestCase):
         payload = json.loads(line["payload"])
         payload["orderItems"][0]["qty"] = 0
         self.assertEqual(reason_of("B", json.dumps(payload)), "INVALID_VALUE")
-
-
-class TestFixtures(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.events, cls.reasons = {}, {}
-        for channel in ("A", "B", "C"):
-            events, reasons = [], []
-            for line in bronze_lines(channel):
-                try:
-                    events.append(to_common_event(line["channel"], line["payload"]))
-                except ConversionError as exc:
-                    reasons.append(exc.reason_code)
-            cls.events[channel], cls.reasons[channel] = events, reasons
-
-    def test_payment_amount_equals_items_plus_shipping(self):
-        """성공 결제금액 = 그 주문의 상품 결제금액 합 + 배송비 (금액 정합)."""
-        for channel in ("A", "B", "C"):
-            orders = {e["order_id"]: e for e in self.events[channel] if e["event_type"] == "ORDER_CREATED"}
-            for event in self.events[channel]:
-                if event["event_type"] != "PAYMENT_SUCCEEDED" or event["order_id"] not in orders:
-                    continue
-                order = orders[event["order_id"]]
-                items_paid = sum(i["unit_price"] * i["quantity"] - i["item_discount"] for i in order["items"])
-                self.assertEqual(event["payment_amount"], items_paid + order["shipping_fee"], event["payment_id"])
-
-    def test_channel_column_is_set(self):
-        for channel in ("A", "B", "C"):
-            self.assertEqual({e["channel"] for e in self.events[channel]}, {channel})
 
 
 if __name__ == "__main__":

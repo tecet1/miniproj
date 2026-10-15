@@ -32,6 +32,11 @@ def balance_violations(counts: dict) -> int:
     return counts["bronze_in"] - (counts["quarantine_found"] + counts["events_found"] + counts["duplicates"])
 
 
+def has_rows(counts: dict) -> bool:
+    """들어온 행이 있는 배치만 기록한다. 새 데이터가 없는 빈 배치(트리거만 돈 경우)는 results에 의미 없는 줄을 쌓지 않는다."""
+    return counts["bronze_in"] > 0
+
+
 def batch_result(counts: dict, batch_id: int, run_id: str, checked_at: datetime) -> dict:
     """집계 결과를 results 행으로 만든다. detail에 각 수를 남겨 어디서 어긋났는지 볼 수 있게 한다."""
     detail = ", ".join(f"{key}={counts[key]}" for key in
@@ -77,6 +82,8 @@ def make_after_batch(schema: str, table: str = RESULTS_TABLE):
         spark = converted_df.sparkSession
         counts = batch_counts(converted_df, silver_event_keys(spark, schema),
                               spark.table(f"{schema}.quarantine").select("eh_partition", "eh_offset"))
+        if not has_rows(counts):
+            return
         now = datetime.now(timezone.utc)
         save_results(spark, [batch_result(counts, batch_id, f"batch-{now.strftime('%Y%m%dT%H%M%S')}", now)], table)
 

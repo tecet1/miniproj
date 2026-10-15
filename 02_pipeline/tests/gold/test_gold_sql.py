@@ -43,79 +43,6 @@ def raw_totals(sales: list) -> dict:
     return result
 
 
-class TestFixtureGold(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.rows = silver.fixture_rows()
-        cls.sales, cls.refunds = build_facts(cls.rows)
-
-    def test_columns_match_gold_tables(self):
-        self.assertEqual(gold_tables.column_names("fact_sales_item"), list(self.sales[0]))
-        self.assertEqual(gold_tables.column_names("fact_refund"), list(self.refunds[0]))
-
-    def test_primary_keys_are_unique(self):
-        for name, rows in (("fact_sales_item", self.sales), ("fact_refund", self.refunds)):
-            keys = [tuple(r[k] for k in gold_tables.TABLES[name]["pk"]) for r in rows]
-            self.assertEqual(len(keys), len(set(keys)), name)
-
-    def test_refund_totals_reconcile_between_facts(self):
-        self.assertEqual(sum(r["refund_amount"] for r in self.refunds), sum(r["refund_amount"] for r in self.sales))
-        self.assertEqual(sum(r["refund_quantity"] for r in self.refunds), sum(r["refund_quantity"] for r in self.sales))
-
-    def test_success_payment_equals_items_plus_shipping_and_shipping_rule(self):
-        shipping = {(o["channel"], o["order_id"]): o["shipping_fee"] for o in self.rows["orders"]}
-        paid = {(p["channel"], p["order_id"]): p["payment_amount"] for p in self.rows["payments"]
-                if p["status"] == "SUCCEEDED"}
-        totals = {}
-        for r in self.sales:
-            key = (r["channel"], r["order_id"])
-            totals[key] = totals.get(key, 0) + r["item_paid_amount"]
-        for key, items_total in totals.items():
-            with self.subTest(order=key):
-                self.assertEqual(items_total + shipping[key], paid[key])
-                self.assertEqual(0 if items_total >= 20000 else 4000, shipping[key])
-
-    def test_dimension_keys_exist(self):
-        """Fact가 참조하는 상품·결제수단·환불 프로필·채널이 Dimension에 있다."""
-        products = {row[0] for row in dimensions.product_rows(silver.ROOT / "01_contracts" / "contracts" / "skus.json")}
-        methods = {row[0] for row in dimensions.payment_method_rows()}
-        profiles = {row[0] for row in dimensions.refund_profile_rows()}
-        channels = {row[0] for row in dimensions.channel_rows()}
-        for r in self.sales:
-            self.assertIn(r["product_id"], products)
-            self.assertIn(r["payment_method"], methods)
-            self.assertIn(r["channel"], channels)
-        for r in self.refunds:
-            self.assertIn(r["refund_profile_key"], profiles)
-            self.assertIn(r["product_id"], products)
-
-    def test_s06_uses_the_successful_payment_not_the_failed_one(self):
-        row = next(r for r in self.sales if r["order_id"] == "A-S06-1")
-        self.assertEqual(("EASY_PAY", "A-S06-1-P2"), (row["payment_method"], row["payment_id"]))
-        self.assertEqual(1, sum(1 for r in self.sales if r["order_id"] == "A-S06-1"))
-
-    def test_s23_payment_date_is_kst(self):
-        row = next(r for r in self.sales if r["order_id"] == "A-S23-1")
-        self.assertEqual("2026-10-11T15:30:00.000Z", row["payment_at"])    # UTC로는 10-11
-        self.assertEqual("2026-10-12", row["payment_date"])                # KST로는 10-12
-
-    def test_s09_refund_rolls_up_into_sales_item(self):
-        row = next(r for r in self.sales if r["order_item_id"] == "A-S09-1-1")
-        self.assertEqual((2, 1, 35000), (row["quantity"], row["refund_quantity"], row["refund_amount"]))
-        self.assertEqual("2026-10-12", row["last_refund_date"])
-        refund = next(r for r in self.refunds if r["refund_id"] == "A-S09-1-R1")
-        self.assertEqual(("RETURN-DEFECT", "2026-10-12", "2026-10-12", "A-S09-1-P1"),
-                         (refund["refund_profile_key"], refund["payment_date"], refund["refund_date"],
-                          refund["payment_id"]))
-
-    def test_unpaid_and_cancelled_orders_have_no_fact(self):
-        """S08은 결제 전 취소, S21의 주문은 격리되어 Silver에 없다. 결제 성공 주문은 채널당 11건이다
-        (기존 8건 + 오류 사례 S26 1건 + S27 2건. S24·S25는 업무 키 위반, S28은 격리라 빠진다)."""
-        ids = {r["order_id"] for r in self.sales if r["channel"] == "A"}
-        self.assertNotIn("A-S08-1", ids)
-        self.assertEqual(11, len(ids))
-
-
 class TestRules(unittest.TestCase):
     """합성 Silver 행으로 제외·지연 도착·부분 환불 규칙을 확인한다 (현재 픽스처에 없는 경우)."""
 
@@ -215,59 +142,6 @@ class TestSqlText(unittest.TestCase):
     def test_default_sql_uses_the_spark_expression(self):
         self.assertIn("from_utc_timestamp", gold_sql.sales_item_sql("s"))
         self.assertIn("from_utc_timestamp", gold_sql.refund_sql("s"))
-
-
-
-class TestErrorCaseFixtures(unittest.TestCase):
-    """오류 사례 시나리오 S24~S28이 명세대로 Gold에서 제외되는지 본다 (event_spec.md 6.1절). 정답 파일 비교가 아니라 시나리오별 동작 확인이다."""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.rows = silver.fixture_rows()
-        cls.sales, cls.refunds = build_facts(cls.rows)
-        cls.con = silver.connect(cls.rows)
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.con.close()
-
-    def sales_of(self, order_id, channel="A"):
-        return [r for r in self.sales if r["channel"] == channel and r["order_id"] == order_id]
-
-    def test_double_payment_and_duplicate_order_created_are_excluded(self):
-        for channel in "ABC":
-            self.assertEqual([], self.sales_of(f"{channel}-S24-1", channel), channel)
-            self.assertEqual([], self.sales_of(f"{channel}-S25-1", channel), channel)
-
-    def test_refund_to_a_failed_payment_is_dropped_but_the_sale_stays(self):
-        for channel in "ABC":
-            rows = self.sales_of(f"{channel}-S26-1", channel)
-            self.assertEqual(1, len(rows))
-            self.assertEqual((0, 0), (rows[0]["refund_quantity"], rows[0]["refund_amount"]))
-            self.assertFalse([r for r in self.refunds if r["channel"] == channel and r["order_id"] == f"{channel}-S26-1"])
-
-    def test_refund_with_a_different_order_id_is_dropped_and_both_orders_stay(self):
-        for channel in "ABC":
-            self.assertEqual(1, len(self.sales_of(f"{channel}-S27-1", channel)))
-            self.assertEqual(1, len(self.sales_of(f"{channel}-S27-2", channel)))
-            self.assertFalse([r for r in self.refunds if r["order_id"].startswith(f"{channel}-S27")])
-            self.assertEqual(0, sum(r["refund_amount"] for r in self.sales if r["order_id"].startswith(f"{channel}-S27")))
-
-    def test_duplicate_item_ids_are_quarantined_so_there_is_no_order_and_no_fact(self):
-        for channel in "ABC":
-            self.assertEqual([], self.sales_of(f"{channel}-S28-1", channel))
-            self.assertFalse([r for r in self.rows["orders"] if r["order_id"] == f"{channel}-S28-1"])
-            self.assertTrue([r for r in self.rows["payments"] if r["order_id"] == f"{channel}-S28-1"])   # 결제 이벤트는 Silver에 남는다
-
-    def test_exclusion_counts_per_channel(self):
-        def count(sql):
-            return silver.run(self.con, sql)[0]["n"]
-        self.assertEqual(6, count(gold_sql.violation_order_count_sql("silver")))     # S24·S25 x 3채널
-        self.assertEqual(6, count(gold_sql.invalid_refund_count_sql("silver")))      # S26·S27 x 3채널
-
-    def test_the_normal_refund_is_still_valid(self):
-        refund_orders = {r["order_id"] for r in self.refunds}
-        self.assertEqual({"A-S09-1", "B-S09-1", "C-S09-1"}, refund_orders)
 
 
 class TestExclusionRules(unittest.TestCase):

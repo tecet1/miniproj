@@ -1,6 +1,6 @@
 """Gold SQL 테스트용 도우미: Silver 행을 만들고 sqlite에 올린다. Spark 없이 같은 SQL을 로컬에서 실행해 보기 위한 것이다.
 
-  fixture_rows()   고정 입력(fixtures) 72행을 변환·중복 제거해 Silver 5개 테이블의 행으로 만든다 (event_spec.md 1.3절 매핑)
+  to_silver(events)  공통 이벤트 목록을 Silver 5개 테이블의 행으로 나눈다 (event_spec.md 1.3절 매핑)
   builders         합성 시나리오용 행 만들기: order, item, payment, cancel, refund
   connect(rows)    sqlite 메모리 DB에 `silver` 스키마를 붙여 행을 넣는다
   run(con, sql)    SELECT를 실행해 dict 목록으로 돌려준다
@@ -17,7 +17,6 @@ sys.path.insert(0, str(ROOT / "02_pipeline" / "silver"))
 from convert_row import convert_row  # noqa: E402
 from validate_skus import load_known_skus  # noqa: E402
 
-FIXTURES = ROOT / "01_contracts" / "data_fixtures"
 KNOWN = load_known_skus(ROOT / "01_contracts" / "contracts" / "skus.json")
 RECEIVED_AT = "2026-10-12T00:00:00.000Z"
 
@@ -39,20 +38,6 @@ COLUMNS = {
 def sqlite_date(column: str) -> str:
     """UTC 시각 문자열을 KST(+9시간) 날짜로 바꾸는 sqlite 식."""
     return f"date({column}, '+9 hours')"
-
-
-def kept_events(channel: str) -> list:
-    """채널 하나의 fixtures를 변환하고 (channel, event_id) 중복은 먼저 온 행만 남긴다."""
-    kept, seen = [], set()
-    with open(FIXTURES / channel / "events.jsonl", encoding="utf-8") as f:
-        for line in f:
-            row = json.loads(line)
-            result = convert_row(row["channel"], row["payload"], KNOWN)
-            if result["reason_code"] or (channel, result["event_id"]) in seen:
-                continue
-            seen.add((channel, result["event_id"]))
-            kept.append(json.loads(result["event_json"]))
-    return kept
 
 
 def to_silver(events: list) -> dict:
@@ -84,15 +69,6 @@ def to_silver(events: list) -> dict:
                                     "refund_amount": e["refund_amount"], "refund_type": e["refund_type"],
                                     "refund_reason_code": e.get("refund_reason_code"),
                                     "refund_created_at": e["event_time"]})
-    return rows
-
-
-def fixture_rows() -> dict:
-    """세 채널 fixtures 전체의 Silver 행."""
-    rows = {table: [] for table in COLUMNS}
-    for channel in "ABC":
-        for table, part in to_silver(kept_events(channel)).items():
-            rows[table] += part
     return rows
 
 

@@ -98,7 +98,7 @@ def main(argv=None) -> None:
     for channel in CHANNELS:
         events += read_events(args.fixtures / channel / "events.jsonl")
     sent = send_all(events, args.base_url, key)
-    print(f"started_at={started_at}  (verify_arrival.py의 --since 값으로 사용)")
+    print(f"started_at={started_at}")
     print("sent:", sent, "total:", sum(sent.values()))
 
 

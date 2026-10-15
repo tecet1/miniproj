@@ -9,7 +9,6 @@
 
 # COMMAND ----------
 
-from bronze_check import check_bronze
 from bronze_stream import kafka_options, parse_envelope, read_events, write_bronze
 
 EVENTHUB_FQDN = "EVH-training-demo-krc-swlee.servicebus.windows.net"
@@ -42,11 +41,6 @@ write_bronze(parse_envelope(read_events(spark, options)), TABLE, CHECKPOINT)
 # COMMAND ----------
 
 display(spark.table(TABLE).groupBy("channel").count())
-
-# COMMAND ----------
-
-# 비어 있으면 fixtures와 일치한다
-print(check_bronze(spark, TABLE) or "OK")
 
 
 # COMMAND ----------

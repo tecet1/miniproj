@@ -30,45 +30,6 @@ def query(con, definition, dims, measures):
     return silver.run(con, g.plain_sql(definition, dims, measures))
 
 
-class TestFixtureMetrics(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.con = g.gold_connection(silver.fixture_rows())
-
-    def test_refund_view_matches_expected_and_sales_view(self):
-        total = query(self.con, REFUND, [], ["refund_amount", "refund_quantity"])[0]
-        self.assertEqual((105000, 3), (total["refund_amount"], total["refund_quantity"]))
-        self.assertEqual(query(self.con, SALES, [], ["refund_amount"])[0]["refund_amount"], total["refund_amount"])
-        reasons = query(self.con, REFUND, ["refund_type", "refund_reason"], ["refund_amount"])
-        self.assertEqual([("RETURN", "DEFECT", 105000)],
-                         [(r["refund_type"], r["refund_reason"], r["refund_amount"]) for r in reasons])
-
-    def test_additive_measures_add_up_over_any_dimension(self):
-        """어느 기준으로 나눠도 합이 전체 값과 같다 (전체 값은 기준 없이 따로 조회한다)."""
-        total = query(self.con, SALES, [], ["total_sales", "refund_amount", "item_count"])[0]
-        for dim in ("payment_date", "channel_name", "method_name", "category", "product_id", "payment_hour"):
-            rows = query(self.con, SALES, [dim], ["total_sales", "refund_amount", "item_count"])
-            with self.subTest(dimension=dim):
-                self.assertEqual((total["total_sales"], total["refund_amount"], total["item_count"]),
-                                 (sum(r["total_sales"] for r in rows), sum(r["refund_amount"] for r in rows),
-                                  sum(r["item_count"] for r in rows)))
-                self.assertGreater(total["total_sales"], 0)
-
-    def test_non_additive_customers_are_recounted_not_summed(self):
-        """상품 단위로 나누면 한 고객이 여러 상품에 걸쳐 중복되므로 합이 전체 결제고객수(18)와 달라진다."""
-        total = query(self.con, SALES, [], ["paying_customers"])[0]["paying_customers"]
-        by_product = query(self.con, SALES, ["product_id"], ["paying_customers"])
-        self.assertEqual(18, total)
-        self.assertGreater(sum(r["paying_customers"] for r in by_product), total)
-
-    def test_no_date_dimension_is_joined(self):
-        """일자 차원은 두지 않는다 (event_spec.md 6.2절). 일자 기준은 Fact의 DATE 컬럼 payment_date·refund_date다."""
-        for definition in metric_defs.DEFINITIONS.values():
-            with self.subTest(view=definition["name"]):
-                self.assertNotIn("dim_date", [name for name, _ in definition["joins"]])
-                self.assertFalse({"month", "week_start", "weekday", "holiday"} & {n for n, _ in definition["dimensions"]})
-
-
 class TestEdgeCases(unittest.TestCase):
     def test_empty_gold_gives_null_ratios_not_errors(self):
         con = g.gold_connection(silver.rows_of())
@@ -155,18 +116,73 @@ class TestCreate(unittest.TestCase):
         self.assertTrue(all("WITH METRICS" in s for s in spark.statements[1:]))
 
 
-class TestMetricCheck(unittest.TestCase):
+
+def synthetic_gold_rows():
+    """두 채널, 주문 3건(상품 4행), 환불 1건. 결제 시각은 UTC 15:30(KST 0시)과 01:00:30(KST 10시)이다."""
+    a1, a2, b1 = "A-X1", "A-X2", "B-X1"
+    orders = [silver.order(a1, user="U1"), silver.order(a2, user="U2", shipping=4000, channel="A"),
+              silver.order(b1, user="U1", channel="B")]
+    items = [silver.item(a1, 1, "SKU-001", 2, 1000), silver.item(a1, 2, "SKU-002", 1, 3000),
+             silver.item(a2, 1, "SKU-001", 1, 1000), silver.item(b1, 1, "SKU-010", 1, 5000, channel="B")]
+    payments = [silver.payment(a1, amount=5000, at="2026-10-11T15:30:00.000Z", method="CARD"),
+                silver.payment(a2, amount=5000, at="2026-10-12T01:00:30.000Z", method="EASY_PAY", user="U2"),
+                silver.payment(b1, amount=5000, at="2026-10-12T01:10:00.000Z", method="CARD", channel="B")]
+    refunds = [silver.refund(a1, quantity=1, amount=1000)]
+    return silver.rows_of(orders=orders, order_items=items, payments=payments, refunds=refunds)
+
+
+class TestMetricsOnSyntheticRows(unittest.TestCase):
+    """합성 Gold 위에서 Metric View 정의가 맞게 조회되는지 본다 (정답 파일 없이 입력에서 바로 알 수 있는 값만)."""
+
     @classmethod
     def setUpClass(cls):
-        cls.con = g.gold_connection(silver.fixture_rows())
+        cls.con = g.gold_connection(synthetic_gold_rows())
 
-    def test_fixture_gold_passes_check(self):
-        spark = g.FakeSpark(self.con)
+    def test_refund_view_and_sales_view_agree_on_the_refund(self):
+        refund = query(self.con, REFUND, [], ["refund_amount", "refund_quantity"])[0]
+        self.assertEqual((1000, 1), (refund["refund_amount"], refund["refund_quantity"]))
+        self.assertEqual(1000, query(self.con, SALES, [], ["refund_amount"])[0]["refund_amount"])
+
+    def test_additive_measures_add_up_over_any_dimension(self):
+        total = query(self.con, SALES, [], ["total_sales", "refund_amount", "item_count"])[0]
+        self.assertEqual((11000, 1000, 4), (total["total_sales"], total["refund_amount"], total["item_count"]))   # 2000 + 3000 + 1000 + 5000
+        for dim in ("payment_date", "channel_name", "method_name", "category", "product_id", "payment_hour"):
+            rows = query(self.con, SALES, [dim], ["total_sales", "refund_amount", "item_count"])
+            with self.subTest(dimension=dim):
+                self.assertEqual((total["total_sales"], total["refund_amount"], total["item_count"]),
+                                 (sum(r["total_sales"] for r in rows), sum(r["refund_amount"] for r in rows),
+                                  sum(r["item_count"] for r in rows)))
+
+    def test_customers_are_recounted_not_summed(self):
+        total = query(self.con, SALES, [], ["paying_customers"])[0]["paying_customers"]
+        self.assertEqual(3, total)       # A의 U1, U2, B의 U1 (채널 + user_id)
+        self.assertGreater(sum(r["paying_customers"] for r in query(self.con, SALES, ["product_id"], ["paying_customers"])), total)
+
+    def test_payment_hour_is_the_kst_hour(self):
+        by_hour = {r["payment_hour"]: r["item_count"] for r in query(self.con, SALES, ["payment_hour"], ["item_count"])}
+        self.assertEqual({0: 2, 10: 2}, by_hour)      # UTC 15:30 -> KST 0시(상품 2행), UTC 01:00:30·01:10 -> KST 10시(2행)
+
+    def test_only_sales_metrics_has_the_payment_hour_dimension(self):
+        self.assertIn("payment_hour", [name for name, _ in metric_defs.SALES_METRICS["dimensions"]])
+        self.assertNotIn("payment_hour", [name for name, _ in metric_defs.REFUND_METRICS["dimensions"]])
+        self.assertEqual("hour(from_utc_timestamp(payment_at, 'Asia/Seoul'))", dict(metric_defs.SALES_METRICS["dimensions"])["payment_hour"])
+
+    def test_no_date_dimension_is_joined(self):
+        """일자 차원은 두지 않는다 (event_spec.md 6.2절). 일자 기준은 Fact의 DATE 컬럼 payment_date·refund_date다."""
+        for definition in metric_defs.DEFINITIONS.values():
+            with self.subTest(view=definition["name"]):
+                self.assertNotIn("dim_date", [name for name, _ in definition["joins"]])
+                self.assertFalse({"month", "week_start", "weekday", "holiday"} & {n for n, _ in definition["dimensions"]})
+
+
+class TestMetricCheck(unittest.TestCase):
+    def test_consistent_gold_passes_check(self):
+        spark = g.FakeSpark(g.gold_connection(synthetic_gold_rows()))
         self.assertEqual([], metric_check.check_metric_views(spark, "c.serving"))
         self.assertTrue(all("c.serving." in q for q in spark.queries))
 
     def test_refund_view_and_sales_view_disagreement_is_reported(self):
-        con = g.gold_connection(silver.fixture_rows())
+        con = g.gold_connection(synthetic_gold_rows())
         con.execute("UPDATE gold.fact_refund SET refund_amount = refund_amount + 1 WHERE rowid = 1")
         problems = metric_check.check_metric_views(g.FakeSpark(con), "c.serving")
         self.assertTrue(any("sales_metrics vs refund_metrics" in p for p in problems), problems)
@@ -174,33 +190,6 @@ class TestMetricCheck(unittest.TestCase):
     def test_measure_sql_format(self):
         self.assertEqual("SELECT MEASURE(a) AS x FROM v", metric_check.measure_sql("v", {"x": "a"}))
         self.assertEqual("SELECT c, MEASURE(a) AS x FROM v GROUP BY c", metric_check.measure_sql("v", {"x": "a"}, "c"))
-
-
-
-class TestPaymentHour(unittest.TestCase):
-    """결제 시간대(payment_hour): 결제 시각을 KST로 바꾼 시 0~23 (event_spec.md 6.5절). sales_metrics에만 있다."""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.con = g.gold_connection(silver.fixture_rows())
-
-    def test_only_sales_metrics_has_the_dimension(self):
-        self.assertIn("payment_hour", [name for name, _ in metric_defs.SALES_METRICS["dimensions"]])
-        self.assertNotIn("payment_hour", [name for name, _ in metric_defs.REFUND_METRICS["dimensions"]])
-
-    def test_expression_converts_utc_to_kst_hour(self):
-        self.assertEqual("hour(from_utc_timestamp(payment_at, 'Asia/Seoul'))", dict(metric_defs.SALES_METRICS["dimensions"])["payment_hour"])
-
-    def test_hours_are_kst_not_utc(self):
-        by_hour = {r["payment_hour"]: r["total_sales"] for r in query(self.con, SALES, ["payment_hour"], ["total_sales"])}
-        self.assertIn(0, by_hour)         # S23: 결제 UTC 15:30 = KST 00:30
-        self.assertIn(10, by_hour)        # S01: 결제 UTC 01:00:30 = KST 10:00
-        self.assertTrue(set(by_hour) <= set(range(24)))
-
-    def test_hourly_sales_add_up_to_the_total(self):
-        by_hour = query(self.con, SALES, ["payment_hour"], ["total_sales"])
-        total = query(self.con, SALES, [], ["total_sales"])[0]["total_sales"]
-        self.assertEqual(total, sum(r["total_sales"] for r in by_hour))
 
 
 if __name__ == "__main__":

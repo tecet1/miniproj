@@ -5,6 +5,7 @@
 """
 import sys
 import unittest
+from unittest import mock
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -16,6 +17,24 @@ from spark_support import local_spark  # noqa: E402
 
 NOW = datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc)
 GOOD = {"bronze_in": 10, "quarantine_found": 2, "unique_events": 6, "events_found": 6, "duplicates": 2}
+
+
+class TestEmptyBatches(unittest.TestCase):
+    def test_empty_batch_is_not_recorded(self):
+        self.assertFalse(B.has_rows(dict.fromkeys(GOOD, 0)))
+
+    def test_batch_with_rows_is_recorded_even_when_everything_was_a_duplicate(self):
+        self.assertTrue(B.has_rows({**dict.fromkeys(GOOD, 0), "bronze_in": 1}))
+
+    def test_after_batch_writes_nothing_for_an_empty_batch(self):
+        saved = []
+        with mock.patch.object(B, "batch_counts", return_value=dict.fromkeys(GOOD, 0)),              mock.patch.object(B, "silver_event_keys"), mock.patch.object(B, "save_results", side_effect=lambda *a: saved.append(a)):
+            B.make_after_batch("s")(mock.Mock(), 3)
+            self.assertEqual([], saved)
+            with mock.patch.object(B, "batch_counts", return_value=GOOD):
+                B.make_after_batch("s")(mock.Mock(), 4)
+        self.assertEqual(1, len(saved))
+        self.assertEqual(4, saved[0][1][0]["batch_id"])
 
 
 class TestBalance(unittest.TestCase):

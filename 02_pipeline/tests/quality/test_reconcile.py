@@ -1,6 +1,6 @@
 """Bronze 재계산 대조(quality/reconcile_sql.py, reconcile_rules.json)를 로컬 Spark에서 확인한다 (pyspark가 없으면 건너뛴다).
 
-[방법] 고정 입력 전체(오류 사례 S24~S28, 격리 대상 오류 포함)와 오류를 높은 비율로 주입한 합성 데이터를 Bronze 행으로 만들고,
+[방법] 시나리오 전체(오류 사례 S24~S28, 격리 대상 오류 포함, 생성기로 만든 줄)와 오류를 높은 비율로 주입한 합성 데이터를 Bronze 행으로 만들고,
   (1) 같은 행을 파이썬 파이프라인(convert_row + Silver 행 만들기 + Gold SQL)으로 처리한 결과를 "실제" Silver·Gold 테이블로 등록한다.
   (2) reconcile_sql이 만든 SQL이 Bronze payload만 보고 다시 계산한 결과(recon_* 뷰)와 비교한 차이 건수가 모든 규칙에서 0인지 본다.
   (3) 실제 테이블을 일부러 틀리게 만들면(행 삭제, 금액 변경, 행 추가) 해당 규칙이 차이를 잡는지 본다 (변이 확인).
@@ -68,13 +68,20 @@ def _set(container, path, value):
 DELETE = object()
 
 
+def scenario_lines(channel):
+    """시나리오(scenarios.json)에서 생성기가 만든 채널 원본 줄. data_fixtures 파일을 읽지 않고 같은 생성기로 직접 만든다."""
+    skus = scenario_loader.load_skus(ROOT / "01_contracts" / "contracts" / "skus.json")
+    scenarios = scenario_loader.load_scenarios(ROOT / "01_contracts" / "contracts" / "scenarios.json")
+    return generate.build_lines(channel, scenarios, skus)
+
+
 def crafted_lines():
     """채널마다 정상 이벤트 하나씩을 골라 필드를 하나씩 망가뜨린 변형 줄을 만든다 (Silver가 격리하는지·받아들이는지 경계를 맞춰 본다)."""
     out = []
     base = {}
     for channel in "ABC":
         names = FIELDS[channel]
-        for line in (ROOT / "01_contracts" / "data_fixtures" / channel / "events.jsonl").read_text(encoding="utf-8").splitlines():
+        for line in scenario_lines(channel):
             raw = json.loads(json.loads(line)["payload"])
             for kind, code in (("order", names["order_code"]), ("pay", names["pay_code"]), ("refund", names["refund_code"]), ("cancel", names["cancel_code"])):
                 if raw[names["code"]] == code and ({"refund": "S09", "cancel": "S08"}.get(kind, "S04") in raw[names["id"]]):
@@ -171,7 +178,7 @@ class TestAgainstThePythonPipeline(unittest.TestCase):
         skus = scenario_loader.load_skus(ROOT / "01_contracts" / "contracts" / "skus.json")
         lines = []
         for channel in "ABC":
-            lines += [json.loads(l) for l in (ROOT / "01_contracts" / "data_fixtures" / channel / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+            lines += [json.loads(l) for l in scenario_lines(channel)]
         sample = synth.build_scenarios(skus, dict(CONFIG, start="2025-11-03", end="2025-11-04", error_rates=HIGH_RATES, base_orders_per_day=40))
         for channel in "ABC":
             lines += [json.loads(l) for l in generate.build_lines(channel, sample, skus, NamedIds(channel))]

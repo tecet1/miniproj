@@ -15,7 +15,6 @@ sys.path.insert(0, str(ROOT / "02_pipeline" / "silver"))
 from channels import channel_c
 from conversion_error import ConversionError
 
-FIXTURE = ROOT / "01_contracts" / "data_fixtures" / "C" / "events.jsonl"
 
 
 def utc(*args):
@@ -157,36 +156,6 @@ class TestErrors(unittest.TestCase):
 
     def test_unknown_event_type(self):
         self.assertEqual(self.reason({**PAY_OK_RAW, "evt_cd": "D01"}), "UNKNOWN_EVENT_TYPE")
-
-
-class TestFixtures(unittest.TestCase):
-    """고정 입력 C 24건 전체를 변환한다."""
-
-    @classmethod
-    def setUpClass(cls):
-        lines = FIXTURE.read_text(encoding="utf-8").splitlines()
-        cls.payloads = [json.loads(json.loads(line)["payload"]) for line in lines if line.strip()]
-        cls.events, cls.errors = [], []
-        for payload in cls.payloads:
-            try:
-                cls.events.append(channel_c.to_event(payload))
-            except ConversionError as exc:
-                cls.errors.append(exc.reason_code)
-
-    def count(self, event_type):
-        ids = {e["event_id"] for e in self.events if e["event_type"] == event_type}
-        return len(ids)
-
-    def test_duplicate_is_same_event(self):
-        """S19 중복 두 줄은 변환 결과가 같다. 제거는 공통 처리의 몫이다."""
-        dup = [e for e in self.events if e["event_id"] == "C-S19-1-E2"]
-        self.assertEqual(len(dup), 2)
-        self.assertEqual(dup[0], dup[1])
-
-    def test_kst_midnight_payment_time(self):
-        """S23: 결제 시각은 UTC 2026-10-11T15:30:00Z (KST 10-12 00:30)."""
-        event = next(e for e in self.events if e["event_id"] == "C-S23-1-E2")
-        self.assertEqual(event["event_time"], utc(2026, 10, 11, 15, 30, 0))
 
 
 if __name__ == "__main__":

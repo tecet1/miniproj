@@ -11,14 +11,18 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / "02_pipeline" / "silver"))
+sys.path[:0] = [str(ROOT / "02_pipeline" / "silver"), str(ROOT / "01_contracts" / "src")]
 
+import generate  # noqa: E402
+import scenario_loader  # noqa: E402
 from convert_row import convert_row  # noqa: E402
 from silver_tables import EVENT_SCHEMA  # noqa: E402
 from validate_skus import load_known_skus  # noqa: E402
 
-FIXTURES = ROOT / "01_contracts" / "data_fixtures"
-KNOWN = load_known_skus(ROOT / "01_contracts" / "contracts" / "skus.json")
+CONTRACTS = ROOT / "01_contracts" / "contracts"
+KNOWN = load_known_skus(CONTRACTS / "skus.json")
+SKUS = scenario_loader.load_skus(CONTRACTS / "skus.json")
+SCENARIOS = scenario_loader.load_scenarios(CONTRACTS / "scenarios.json")
 
 ORDER_A = json.dumps({
     "event_id": "A-X-E1", "event_type": "order.created", "occurred_at": "2026-10-12T01:00:00.000Z",
@@ -27,9 +31,13 @@ ORDER_A = json.dumps({
                "quantity": 1, "unit_price": 89000, "discount_amount": 0}]})
 
 
+def scenario_rows(channel: str) -> list:
+    """시나리오에서 생성기가 만든 채널 원본 줄 ({"channel", "payload"}). 파일을 읽지 않는다."""
+    return [json.loads(line) for line in generate.build_lines(channel, SCENARIOS, SKUS)]
+
+
 def first_payload(channel: str) -> str:
-    with open(FIXTURES / channel / "events.jsonl", encoding="utf-8") as f:
-        return json.loads(f.readline())["payload"]
+    return scenario_rows(channel)[0]["payload"]
 
 
 class TestSuccess(unittest.TestCase):
@@ -58,14 +66,12 @@ class TestSuccess(unittest.TestCase):
         """event_json의 모든 키가 EVENT_SCHEMA에 있어야 Spark from_json이 값을 버리지 않는다."""
         declared = {top.strip().split(" ")[0] for top in EVENT_SCHEMA.split(", ") if " " in top.strip()}
         for channel in "ABC":
-            with open(FIXTURES / channel / "events.jsonl", encoding="utf-8") as f:
-                for line in f:
-                    row = json.loads(line)
-                    result = convert_row(row["channel"], row["payload"], KNOWN)
-                    if result["reason_code"]:
-                        continue
-                    keys = set(json.loads(result["event_json"]))
-                    self.assertLessEqual(keys, declared | {"items"}, keys - declared)
+            for row in scenario_rows(channel):
+                result = convert_row(row["channel"], row["payload"], KNOWN)
+                if result["reason_code"]:
+                    continue
+                keys = set(json.loads(result["event_json"]))
+                self.assertLessEqual(keys, declared | {"items"}, keys - declared)
 
 
 class TestFailure(unittest.TestCase):
