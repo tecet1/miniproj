@@ -58,6 +58,9 @@ class TestAmounts(unittest.TestCase):
             for event in kept:
                 if event["event_type"] != "PAYMENT_SUCCEEDED":
                     continue
+                if event["order_id"] not in orders:
+                    self.assertIn("-S28-", event["order_id"])     # S28은 주문 생성이 격리되어 결제만 Silver에 남는다
+                    continue
                 order = orders[event["order_id"]]
                 items_total = sum(i["unit_price"] * i["quantity"] - i["item_discount"] for i in order["items"])
                 with self.subTest(order=event["order_id"]):

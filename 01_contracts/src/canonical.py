@@ -6,6 +6,10 @@
 중립 이벤트 = dict. 모든 이벤트의 공통 키:
     event_id, event_type, order_id, user_id, event_time(UTC aware datetime),
     fault(None 또는 오류 이름), send_count(기본 1)
+시나리오의 오류 사례용 키 (event_spec.md 6.1·4절의 위반을 일부러 만든다. 정상 시나리오는 쓰지 않는다):
+    items[].reuse_item_id_of   그 행이 N번째 행의 order_item_id를 다시 쓴다 (한 주문 items 안의 ID 중복)
+    REFUND_SUCCEEDED의 "payment": "failed"  환불이 직전 결제 실패의 payment_id를 가리킨다
+    REFUND_SUCCEEDED의 "order_no": N        환불 이벤트의 order_id가 같은 시나리오 N번 주문의 것이 된다
 유형별 추가 키:
     ORDER_CREATED     shipping_fee, items[{order_item_id, product_id, product_name, category,
                                            quantity, unit_price, item_discount}]
@@ -31,7 +35,8 @@ def build_events(scenario: dict, skus: dict[str, dict], channel: str, ids=None) 
     for order in scenario["orders"]:
         order_id = ids.order_id(channel, scenario["id"], order["order_no"])
         order_start = scenario_start + timedelta(seconds=order.get("start_offset_sec", 0))
-        events += _build_order_events(order, order_id, order_start, skus, ids)
+        events += _build_order_events(order, order_id, order_start, skus, ids,
+                                      lambda no: ids.order_id(channel, scenario["id"], no))
     return events
 
 
@@ -41,8 +46,9 @@ def _build_items(order: dict, order_id: str, skus: dict[str, dict], ids) -> tupl
     for seq, line in enumerate(order["items"], start=1):
         sku = skus[line["sku"]]
         _, paid = pricing.item_amounts(sku["unit_price"], line["quantity"], line["discount"])
+        reused = line.get("reuse_item_id_of")   # 오류 사례: 다른 행의 ID를 다시 쓴다
         items.append({
-            "order_item_id": ids.order_item_id(order_id, seq),
+            "order_item_id": items[reused - 1]["order_item_id"] if reused else ids.order_item_id(order_id, seq),
             "product_id": sku["product_id"],
             "product_name": sku["product_name"],
             "category": sku["category"],
@@ -55,15 +61,17 @@ def _build_items(order: dict, order_id: str, skus: dict[str, dict], ids) -> tupl
 
 
 def _build_order_events(order: dict, order_id: str, order_start: datetime,
-                        skus: dict[str, dict], ids) -> list[dict]:
-    """주문 하나의 이벤트를 만든다. 번호(E, P, R)와 성공 결제 ID를 세면서 순서대로 처리한다."""
+                        skus: dict[str, dict], ids, order_id_of) -> list[dict]:
+    """주문 하나의 이벤트를 만든다. 번호(E, P, R)와 성공 결제 ID를 세면서 순서대로 처리한다.
+
+    order_id_of(no)는 같은 시나리오 no번 주문의 order_id를 돌려준다 (환불 스펙의 "order_no"용)."""
     items, paid_amounts = _build_items(order, order_id, skus, ids)
     shipping = pricing.shipping_fee(sum(paid_amounts))
     payment_amount = sum(paid_amounts) + shipping
 
     events = []
     payment_no = refund_no = 0
-    succeeded_payment_id = None
+    succeeded_payment_id = failed_payment_id = None
     for event_no, spec in enumerate(order["events"], start=1):
         event_time = order_start + timedelta(seconds=spec["offset_sec"])
         event = {
@@ -89,12 +97,14 @@ def _build_order_events(order: dict, order_id: str, order_start: datetime,
             )
             if spec["type"] == "PAYMENT_SUCCEEDED":
                 succeeded_payment_id = event["payment_id"]
+            else:
+                failed_payment_id = event["payment_id"]
         else:  # REFUND_SUCCEEDED
             refund_no += 1
             line_index = spec["item"] - 1
             event.update(
                 refund_id=ids.refund_id(order_id, refund_no),
-                payment_id=succeeded_payment_id,
+                payment_id=failed_payment_id if spec.get("payment") == "failed" else succeeded_payment_id,
                 order_item_id=items[line_index]["order_item_id"],
                 refund_quantity=spec["quantity"],
                 refund_amount=pricing.refund_amount(
@@ -102,5 +112,7 @@ def _build_order_events(order: dict, order_id: str, order_start: datetime,
                 refund_type=spec["refund_type"],
                 refund_reason_code=spec["reason"],
             )
+            if "order_no" in spec:   # 오류 사례: 환불 이벤트의 order_id만 다른 주문의 것이다
+                event["order_id"] = order_id_of(spec["order_no"])
         events.append(event)
     return events

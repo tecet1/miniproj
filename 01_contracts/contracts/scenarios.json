@@ -78,6 +78,54 @@
        "items": [{"sku": "SKU-007", "quantity": 1, "discount": 0}],
        "events": [
          {"type": "ORDER_CREATED", "offset_sec": 0},
-         {"type": "PAYMENT_SUCCEEDED", "offset_sec": 30, "method": "VIRTUAL_ACCOUNT"}]}]}
+         {"type": "PAYMENT_SUCCEEDED", "offset_sec": 30, "method": "VIRTUAL_ACCOUNT"}]}]},
+
+    {"id": "S24", "title": "이중 결제 (오류 사례)", "start_kst": "2026-10-12T12:00:00+09:00", "orders": [
+      {"order_no": 1, "user_id": "U02",
+       "items": [{"sku": "SKU-001", "quantity": 1, "discount": 0}],
+       "events": [
+         {"type": "ORDER_CREATED", "offset_sec": 0},
+         {"type": "PAYMENT_SUCCEEDED", "offset_sec": 30, "method": "CARD"},
+         {"type": "PAYMENT_SUCCEEDED", "offset_sec": 60, "method": "CARD"}]}]},
+
+    {"id": "S25", "title": "주문 생성 중복 (오류 사례)", "start_kst": "2026-10-12T12:10:00+09:00", "orders": [
+      {"order_no": 1, "user_id": "U02",
+       "items": [{"sku": "SKU-001", "quantity": 1, "discount": 0}],
+       "events": [
+         {"type": "ORDER_CREATED", "offset_sec": 0},
+         {"type": "ORDER_CREATED", "offset_sec": 5},
+         {"type": "PAYMENT_SUCCEEDED", "offset_sec": 30, "method": "CARD"}]}]},
+
+    {"id": "S26", "title": "실패한 결제를 가리키는 환불 (오류 사례)", "start_kst": "2026-10-12T12:20:00+09:00", "orders": [
+      {"order_no": 1, "user_id": "U02",
+       "items": [{"sku": "SKU-010", "quantity": 2, "discount": 0}],
+       "events": [
+         {"type": "ORDER_CREATED", "offset_sec": 0},
+         {"type": "PAYMENT_FAILED", "offset_sec": 20, "method": "CARD", "fail_reason": "LIMIT_EXCEEDED"},
+         {"type": "PAYMENT_SUCCEEDED", "offset_sec": 50, "method": "CARD"},
+         {"type": "REFUND_SUCCEEDED", "offset_sec": 600, "item": 1, "quantity": 1,
+          "refund_type": "RETURN", "reason": "DEFECT", "payment": "failed"}]}]},
+
+    {"id": "S27", "title": "환불의 주문 ID가 결제·상품 행과 다름 (오류 사례)", "start_kst": "2026-10-12T12:30:00+09:00", "orders": [
+      {"order_no": 1, "user_id": "U02",
+       "items": [{"sku": "SKU-001", "quantity": 1, "discount": 0}],
+       "events": [
+         {"type": "ORDER_CREATED", "offset_sec": 0},
+         {"type": "PAYMENT_SUCCEEDED", "offset_sec": 30, "method": "CARD"},
+         {"type": "REFUND_SUCCEEDED", "offset_sec": 600, "item": 1, "quantity": 1,
+          "refund_type": "RETURN", "reason": "DEFECT", "order_no": 2}]},
+      {"order_no": 2, "user_id": "U02", "start_offset_sec": 120,
+       "items": [{"sku": "SKU-001", "quantity": 1, "discount": 0}],
+       "events": [
+         {"type": "ORDER_CREATED", "offset_sec": 0},
+         {"type": "PAYMENT_SUCCEEDED", "offset_sec": 30, "method": "CARD"}]}]},
+
+    {"id": "S28", "title": "한 주문 items 안의 상품 ID 중복 (오류 사례)", "start_kst": "2026-10-12T12:40:00+09:00", "orders": [
+      {"order_no": 1, "user_id": "U02",
+       "items": [{"sku": "SKU-001", "quantity": 1, "discount": 0},
+                 {"sku": "SKU-002", "quantity": 1, "discount": 0, "reuse_item_id_of": 1}],
+       "events": [
+         {"type": "ORDER_CREATED", "offset_sec": 0},
+         {"type": "PAYMENT_SUCCEEDED", "offset_sec": 30, "method": "CARD"}]}]}
   ]
 }

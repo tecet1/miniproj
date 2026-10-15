@@ -55,14 +55,31 @@ def _array_contains(array_json, value):
     return value in json.loads(array_json)
 
 
+def _parse_utc(value):
+    """UTC 시각 문자열('2026-10-12T01:00:30.000Z' 또는 '2026-10-12 01:00:30')을 datetime으로."""
+    return datetime.datetime.fromisoformat(str(value).replace("Z", "").replace("T", " "))
+
+
+def _from_utc_timestamp(value, zone):
+    """Spark from_utc_timestamp: UTC 시각을 zone의 벽시계 시각으로. 쓰는 zone은 Asia/Seoul(+9시간)뿐이다."""
+    assert zone == "Asia/Seoul", zone
+    return None if value is None else (_parse_utc(value) + datetime.timedelta(hours=9)).isoformat(sep=" ")
+
+
+def _hour(value):
+    return None if value is None else _parse_utc(value).hour
+
+
 def register_spark_functions(con) -> None:
-    """Spark 함수 7개를 sqlite 사용자 함수로 등록한다. 날짜는 'YYYY-MM-DD' 문자열이다."""
+    """Spark 함수 9개를 sqlite 사용자 함수로 등록한다. 날짜는 'YYYY-MM-DD' 문자열이다."""
     for name, arity, func in (
             ("date_sub", 2, lambda d, n: (_day(d) - datetime.timedelta(days=n)).isoformat()),
             ("datediff", 2, lambda end, start: (_day(end) - _day(start)).days),
             ("add_months", 2, _add_months),
             ("weekday", 1, lambda d: _day(d).weekday()),   # 월요일 0 ... 일요일 6 (Spark weekday와 같다)
             ("date_format", 2, _date_format),
+            ("from_utc_timestamp", 2, _from_utc_timestamp),
+            ("hour", 1, _hour),
             ("format_number", 2, _format_number),
             ("array_contains", 2, _array_contains)):
         con.create_function(name, arity, func)

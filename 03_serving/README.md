@@ -5,7 +5,7 @@
 | 폴더 | 내용 |
 |---|---|
 | `metric_views/` | `sales_metrics`·`refund_metrics` 정의(`metric_defs.py`), 생성(`create_metric_views.py`), 자체 정합성 확인(`metric_check.py`), 실행 노트북(`run_metric_views.py`) |
-| `dashboards/` | 대시보드 정의(`dashboard_spec.py`), JSON 생성기(`build_dashboard.py`), 생성 결과(`commerce_poc.lvdash.json`), 화면 구성 가이드(`화면_구성_가이드.md`) |
+| `dashboards/` | 화면 구성 가이드(`화면_구성_가이드.md`): 3페이지 대시보드의 데이터셋 SQL과 위젯 설명서. 대시보드는 Databricks 화면에서 직접 만들고 유지한다(생성기·JSON은 2026-10-15에 삭제, 이력은 git `beba3ef`) |
 | `genie/` | 대시보드 이후의 후속 범위. 아직 만들지 않았다. |
 | `reference/` | 벤치마크 참고 자료(스마트스토어 캡처 등). 계정·사업자 정보가 있을 수 있어 외부 공개 전에 마스킹한다. |
 
@@ -15,13 +15,8 @@
 
 1. `02_pipeline/gold/run_gold.py`로 Gold를 만든다 (`check_gold` 통과 후).
 2. `metric_views/run_metric_views.py`를 실행한다: `commerce_poc.serving`에 뷰 2개를 만들고 `check_metric_views`가 빈 목록(`OK`)인지 본다.
-3. `dashboards/commerce_poc.lvdash.json`을 Git folder로 동기화해 대시보드로 연다 (카드 5-G 개편안: 필터 3개, 주별 선 차트, KPI 증감). 열리지 않으면 `dashboards/화면_구성_가이드.md`의 데이터셋 SQL로 화면에서 위젯을 만든다. 개편안은 Databricks에서 열어 보지 못했다(미검증).
+3. `dashboards/화면_구성_가이드.md`의 데이터셋 SQL과 위젯 설명서로 Databricks 화면에서 대시보드를 만든다.
 
 주의: 카드 5-G가 두 Metric View에 `payment_week`를 추가했으므로 **2번을 반드시 다시 실행**한다.
 
-정의를 바꾸면 대시보드 파일을 다시 만든다 (프로젝트 루트, PowerShell).
-
-```powershell
-python .\03_serving\dashboards\build_dashboard.py
-python -m unittest discover -s .\02_pipeline\tests\serving -v
-```
+정의(Metric View)를 바꾸면 `metric_views/run_metric_views.py`를 다시 실행하고, 화면의 데이터셋·위젯은 가이드의 "자주 하는 유지보수" 표를 따라 직접 고친다.

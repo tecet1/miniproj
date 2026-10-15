@@ -46,6 +46,21 @@ class TestInvalid(unittest.TestCase):
             validate_event_values(event)
         self.assertEqual(ctx.exception.reason_code, "INVALID_VALUE")
 
+    def test_same_order_item_id_twice_in_one_order(self):
+        event = copy.deepcopy(ORDER)
+        event["items"].append({**event["items"][0], "unit_price": 1000, "item_discount": 0})     # 값은 정상이고 ID만 같다
+        self.assert_invalid(event)
+
+    def test_distinct_order_item_ids_pass(self):
+        event = copy.deepcopy(ORDER)
+        event["items"].append({**event["items"][0], "order_item_id": "X-2"})
+        self.assertIsNone(validate_event_values(event))
+
+    def test_the_duplicate_check_ignores_other_events_with_the_same_id(self):
+        """다른 주문 이벤트와 같은 ID는 여기서 보지 않는다 (한 주문 items 안만 본다)."""
+        self.assertIsNone(validate_event_values(copy.deepcopy(ORDER)))
+        self.assertIsNone(validate_event_values(copy.deepcopy(ORDER)))
+
     def test_negative_shipping_fee(self):
         self.assert_invalid({**ORDER, "shipping_fee": -1})
 

@@ -28,10 +28,11 @@ class TestGenerate(unittest.TestCase):
     def lines(self, channel):
         return generate.build_lines(channel, self.scenarios, self.skus)
 
-    def test_24_lines_per_channel(self):
+    def test_41_lines_per_channel(self):
+        """기존 시나리오 24줄 + 오류 사례 S24~S28 17줄 (3+3+4+5+2)."""
         for channel in "ABC":
             with self.subTest(channel=channel):
-                self.assertEqual(len(self.lines(channel)), 24)
+                self.assertEqual(len(self.lines(channel)), 41)
 
     def test_line_is_channel_and_payload_string(self):
         for channel in "ABC":
@@ -56,7 +57,7 @@ class TestGenerate(unittest.TestCase):
             if order_id not in order_ids:
                 order_ids.append(order_id)
         self.assertEqual(order_ids[:3], ["A-S01-1", "A-S02-1", "A-S02-2"])
-        self.assertEqual(order_ids[-1], "A-S23-1")
+        self.assertEqual(order_ids[-1], "A-S28-1")
 
     def test_s21_faults_in_channel_a(self):
         by_id = {parse(l)[1]["event_id"]: parse(l)[1] for l in self.lines("A")}
@@ -93,7 +94,7 @@ class TestGenerate(unittest.TestCase):
                 path = Path(t1) / channel / "events.jsonl"
                 raw = path.read_bytes()
                 self.assertNotIn(b"\r", raw)                       # 줄바꿈은 LF로 고정
-                self.assertEqual(len(raw.decode("utf-8").splitlines()), 24)
+                self.assertEqual(len(raw.decode("utf-8").splitlines()), 41)
                 self.assertEqual(digest(path), digest(Path(t2) / channel / "events.jsonl"))
 
 

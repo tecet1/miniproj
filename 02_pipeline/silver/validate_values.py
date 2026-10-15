@@ -6,6 +6,7 @@
 [규칙] 이벤트 명세 4절 INVALID_VALUE: 음수 금액, 수량 0 이하, 할인 > 단가 x 수량
   ORDER_CREATED     shipping_fee >= 0
                     items 각 행: quantity > 0, unit_price >= 0, item_discount >= 0, item_discount <= unit_price x quantity
+                    items 안에서 order_item_id가 겹치지 않는다 (2026-10-15, event_spec.md 4절)
   PAYMENT_*         payment_amount >= 0
   REFUND_SUCCEEDED  refund_quantity > 0, refund_amount >= 0
   ORDER_CANCELLED   검사할 값 없음
@@ -34,11 +35,15 @@ def check_item(item: dict) -> None:
 
 
 def check_order(event: dict) -> None:
-    """shipping_fee >= 0 이고, 모든 상품 행이 check_item을 통과해야 한다."""
+    """shipping_fee >= 0 이고, 모든 상품 행이 check_item을 통과하며, order_item_id가 겹치지 않아야 한다."""
     if event["shipping_fee"] < 0:
         invalid(f"shipping_fee={event['shipping_fee']}")
+    seen = set()
     for item in event["items"]:
         check_item(item)
+        if item["order_item_id"] in seen:
+            invalid(f"duplicate order_item_id={item['order_item_id']}")
+        seen.add(item["order_item_id"])
 
 
 def check_payment(event: dict) -> None:

@@ -58,6 +58,7 @@ def kept_events(channel: str) -> list:
 def to_silver(events: list) -> dict:
     """공통 이벤트 목록을 Silver 행으로 나눈다. 시각은 UTC 문자열 그대로 둔다."""
     rows = {table: [] for table in COLUMNS}
+    seen_items = set()   # Silver는 order_items를 (channel, order_item_id)로 한 번만 쌓는다 (silver_stream.build_order_items)
     for e in events:
         base = {"channel": e["channel"], "event_id": e["event_id"], "order_id": e["order_id"],
                 "user_id": e["user_id"], "received_at": RECEIVED_AT}
@@ -65,7 +66,9 @@ def to_silver(events: list) -> dict:
         if kind == "ORDER_CREATED":
             rows["orders"].append({**base, "shipping_fee": e["shipping_fee"], "order_created_at": e["event_time"]})
             for i in e["items"]:
-                rows["order_items"].append({**i, "channel": e["channel"], "order_id": e["order_id"]})
+                if (e["channel"], i["order_item_id"]) not in seen_items:
+                    seen_items.add((e["channel"], i["order_item_id"]))
+                    rows["order_items"].append({**i, "channel": e["channel"], "order_id": e["order_id"]})
         elif kind == "ORDER_CANCELLED":
             rows["order_cancellations"].append({**base, "cancel_reason_code": e.get("cancel_reason_code"),
                                                 "cancel_created_at": e["event_time"]})

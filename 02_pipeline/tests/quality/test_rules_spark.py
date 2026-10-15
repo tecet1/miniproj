@@ -49,13 +49,17 @@ def sample_events():
     for fee, qty, price, discount, sku in itertools.product((-1, 0, 4000), (-1, 0, 2), (-1, 0, 1000),
                                                             (-500, 0, 1000, 2000, 2500), ("SKU-001", "SKU-999")):
         events.append({"event_type": "ORDER_CREATED", "shipping_fee": fee,
-                       "items": [{"quantity": qty, "unit_price": price, "item_discount": discount, "product_id": sku}]})
+                       "items": [{"order_item_id": "I1", "quantity": qty, "unit_price": price, "item_discount": discount,
+                                  "product_id": sku}]})
     events.append({"event_type": "ORDER_CREATED", "shipping_fee": 0, "items": [          # 여러 행 중 한 행만 나쁨
-        {"quantity": 1, "unit_price": 1000, "item_discount": 0, "product_id": "SKU-001"},
-        {"quantity": 0, "unit_price": 1000, "item_discount": 0, "product_id": "SKU-002"}]})
+        {"order_item_id": "I1", "quantity": 1, "unit_price": 1000, "item_discount": 0, "product_id": "SKU-001"},
+        {"order_item_id": "I2", "quantity": 0, "unit_price": 1000, "item_discount": 0, "product_id": "SKU-002"}]})
     events.append({"event_type": "ORDER_CREATED", "shipping_fee": 0, "items": [
-        {"quantity": 1, "unit_price": 1000, "item_discount": 0, "product_id": "SKU-001"},
-        {"quantity": 1, "unit_price": 1000, "item_discount": 0, "product_id": "SKU-002"}]})
+        {"order_item_id": "I1", "quantity": 1, "unit_price": 1000, "item_discount": 0, "product_id": "SKU-001"},
+        {"order_item_id": "I2", "quantity": 1, "unit_price": 1000, "item_discount": 0, "product_id": "SKU-002"}]})
+    events.append({"event_type": "ORDER_CREATED", "shipping_fee": 0, "items": [          # 같은 order_item_id 두 행
+        {"order_item_id": "I1", "quantity": 1, "unit_price": 1000, "item_discount": 0, "product_id": "SKU-001"},
+        {"order_item_id": "I1", "quantity": 1, "unit_price": 1000, "item_discount": 0, "product_id": "SKU-002"}]})
     for event_type, amount in itertools.product(("PAYMENT_SUCCEEDED", "PAYMENT_FAILED"), (-1, 0, 5)):
         events.append({"event_type": event_type, "payment_amount": amount})
     for qty, amount in itertools.product((-1, 0, 1), (-1, 0, 5)):

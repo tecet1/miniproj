@@ -7,8 +7,11 @@
   2. 대조: 성공 결제금액 = 상품 결제금액 합 + 배송비, 배송비 규칙 (2만 원 이상 0원, 미만 4,000원)
   3. PK 중복 0건, Dimension 키 누락 0건
 건수·금액·지표·분포를 정답과 비교하는 검사는 두지 않는다 (검증은 별도로 진행한다).
+report_exclusions는 업무 키 위반 주문 수와 무효 환불 수를 돌려준다 (event_spec.md 6.6절: 0이 아니면 보고하며 해당 주문·환불은 Gold에서 제외된 상태다).
+검사 실패가 아니라 보고라서 check_gold의 문제 목록에는 넣지 않는다.
 비교 함수는 pyspark 없이 로컬에서 테스트한다. Spark 조회 함수는 Databricks에서만 돈다 (미검증).
 """
+import gold_sql
 from gold_tables import TABLES
 
 # Fact의 Dimension 참조: (Fact, Fact 컬럼, Dimension, Dimension 키)
@@ -80,6 +83,12 @@ def count_payment_mismatches(spark, silver: str, gold: str) -> dict:
         "배송비 규칙 위반": spark.sql(
             base + "WHERE o.shipping_fee <> CASE WHEN g.items_total >= 20000 THEN 0 ELSE 4000 END").first()["n"],
     }
+
+
+def report_exclusions(spark, silver_schema: str) -> dict:
+    """Gold에서 제외된 업무 키 위반 주문 수와 무효 환불 수."""
+    return {"업무 키 위반 주문": spark.sql(gold_sql.violation_order_count_sql(silver_schema)).first()["n"],
+            "무효 환불": spark.sql(gold_sql.invalid_refund_count_sql(silver_schema)).first()["n"]}
 
 
 def check_gold(spark, silver_schema: str, gold_schema: str) -> list[str]:

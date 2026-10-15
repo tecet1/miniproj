@@ -21,7 +21,7 @@ class TestScenarioLoader(unittest.TestCase):
 
     def test_load_scenarios_keeps_order(self):
         ids = [s["id"] for s in self.scenarios]
-        self.assertEqual(ids, ["S01", "S02", "S04", "S06", "S08", "S09", "S19", "S21", "S23"])
+        self.assertEqual(ids, ["S01", "S02", "S04", "S06", "S08", "S09", "S19", "S21", "S23", "S24", "S25", "S26", "S27", "S28"])
 
 
 if __name__ == "__main__":

@@ -76,5 +76,23 @@ class TestDefinitions(unittest.TestCase):
                     self.assertIn((fact, column), checked)
 
 
+
+class TestReportExclusions(unittest.TestCase):
+    class Spark:
+        def __init__(self, violations, invalid):
+            self.values = {"violation": violations, "invalid": invalid}
+
+        def sql(self, statement):
+            key = "invalid" if "FROM c.silver.refunds r" in statement else "violation"
+            return mock.Mock(first=lambda: {"n": self.values[key]})
+
+    def test_counts_are_reported_by_name(self):
+        self.assertEqual({"업무 키 위반 주문": 3, "무효 환불": 5}, gold_check.report_exclusions(self.Spark(3, 5), "c.silver"))
+
+    def test_exclusions_are_a_report_not_a_check_failure(self):
+        """check_gold의 문제 목록에는 넣지 않는다 (event_spec.md 6.6절: 제외된 상태로 보고만 한다)."""
+        self.assertEqual([], gold_check.check_gold(FakeSpark(sales=(0, 0), refund=(0, 0)), "s", "g"))
+
+
 if __name__ == "__main__":
     unittest.main()

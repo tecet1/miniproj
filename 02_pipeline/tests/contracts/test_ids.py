@@ -133,8 +133,10 @@ class TestUuidIdsInTheGenerator(unittest.TestCase):
         self.assertTrue(set(a).isdisjoint(b))
 
     def test_all_event_ids_are_unique_within_a_channel(self):
+        """정상 시나리오만 본다. 오류 사례 S25(생성 이벤트 중복)·S28(상품 ID 중복)은 order_item_id가 겹치도록 만든 것이다."""
         for channel in "ABC":
-            events = [e for s in SCENARIOS for e in self.build(s, channel, ids.NamedIds(1))]
+            events = [e for s in SCENARIOS if s["id"] not in ("S25", "S28")
+                      for e in self.build(s, channel, ids.NamedIds(1))]
             event_ids = [e["event_id"] for e in events]
             self.assertEqual(len(event_ids), len(set(event_ids)), channel)
             item_ids = [i["order_item_id"] for e in events if e["event_type"] == "ORDER_CREATED" for i in e["items"]]
@@ -144,8 +146,8 @@ class TestUuidIdsInTheGenerator(unittest.TestCase):
         """Silver 행 변환이 ID 형식에 의존하지 않는다: 격리 없이 통과하고 event_id가 같다."""
         for style in (ids.NamedIds(5), ids.RandomIds()):
             for channel in "ABC":
-                lines = generate.build_lines(channel, [s for s in SCENARIOS if not any(
-                    ev.get("fault") for o in s["orders"] for ev in o["events"])], SKUS, style)
+                lines = generate.build_lines(channel, [s for s in SCENARIOS if s["id"] != "S28" and not any(
+                    ev.get("fault") for o in s["orders"] for ev in o["events"])], SKUS, style)    # S28은 INVALID_VALUE로 격리되는 오류 사례
                 seen = 0
                 for line in lines:
                     outer = json.loads(line)

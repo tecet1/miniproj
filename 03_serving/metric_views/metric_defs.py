@@ -17,6 +17,8 @@ import json
 _SALES = "SUM(item_paid_amount)"
 # 결제주 = 결제일이 속한 주의 월요일(event_spec 6.5절). weekday()는 월요일이 0이다. 로컬 테스트는 같은 이름의 함수를 sqlite에 등록해 같은 식을 실행한다.
 _WEEK = "date_sub(payment_date, weekday(payment_date))"
+# 결제 시간대 = 결제 시각을 KST로 바꾼 시(0~23). 판매 뷰에만 있다 (event_spec 6.5절, 2026-10-15)
+_HOUR = "hour(from_utc_timestamp(payment_at, 'Asia/Seoul'))"
 _CUSTOMERS = "COUNT(DISTINCT source.channel || '|' || source.user_id)"   # user_id가 NULL이면 식이 NULL이라 세지 않는다
 
 SALES_METRICS = {
@@ -30,6 +32,7 @@ SALES_METRICS = {
     "dimensions": [
         ("payment_date", "payment_date"),
         ("payment_week", _WEEK),
+        ("payment_hour", _HOUR),
         ("channel", "source.channel"),
         ("channel_name", "dim_channel.channel_name"),
         ("product_id", "source.product_id"),

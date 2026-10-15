@@ -11,8 +11,11 @@ import gold_tables  # noqa: E402
 
 
 class FakeFrame:
-    def __init__(self, log, label):
-        self.log, self.label = log, label
+    def __init__(self, log, label, duplicates=0):
+        self.log, self.label, self.duplicates = log, label, duplicates
+
+    def first(self):
+        return {"n": self.duplicates}
 
     def createOrReplaceTempView(self, name):
         self.log.append(("view", name, self.label))
@@ -21,12 +24,18 @@ class FakeFrame:
 class FakeSpark:
     """호출을 순서대로 기록한다."""
 
-    def __init__(self):
+    def __init__(self, duplicates=None):
         self.log, self.dataframes = [], []
+        self.duplicates = duplicates or {}    # {Fact 이름: 소스 PK 중복 키 수}
 
     def sql(self, statement):
         self.log.append(("sql", statement))
-        return FakeFrame(self.log, statement)
+        duplicates = 0
+        for table, count in self.duplicates.items():
+            if statement.startswith("SELECT COUNT(*) AS n FROM (SELECT") and f"FROM {table}" not in statement and \
+                    {"fact_sales_item": "FROM c.silver.order_items", "fact_refund": "FROM c.silver.refunds r"}[table] in statement:
+                duplicates = count
+        return FakeFrame(self.log, statement, duplicates)
 
     def createDataFrame(self, rows, schema):
         self.dataframes.append((rows, schema))
@@ -50,7 +59,7 @@ class TestBuildGold(unittest.TestCase):
 
     def test_creates_the_six_tables_first(self):
         spark = self.run_build()
-        first = [s for kind, s, *_ in spark.log[:6]]
+        first = [s for kind, s, *_ in spark.log if not s.startswith("SELECT COUNT(*)")][:6]    # 소스 PK 중복 검사(SELECT)는 쓰기 전에 먼저 돈다
         self.assertEqual([f"CREATE TABLE IF NOT EXISTS c.gold.{t} ({gold_tables.schema_ddl(t)})"
                           for t in gold_tables.TABLES], first)
 
@@ -86,6 +95,38 @@ class TestBuildGold(unittest.TestCase):
         spark = self.run_build()
         self.assertEqual(4, len(spark.dataframes))
         self.assertFalse([e for e in spark.log if e[0] == "sql" and "dim_date" in e[1]])
+
+
+
+class TestSourceKeyCheck(unittest.TestCase):
+    def build(self, duplicates):
+        spark = FakeSpark(duplicates)
+        try:
+            gold_build.build_gold(spark, "c.silver", "c.gold")
+            return spark, None
+        except gold_build.SourceKeyError as error:
+            return spark, error
+
+    def test_clean_sources_are_loaded(self):
+        spark, error = self.build({})
+        self.assertIsNone(error)
+        self.assertEqual(6, len(merges(spark)))
+
+    def test_source_with_duplicate_keys_is_refused_before_anything_is_written(self):
+        for table in ("fact_sales_item", "fact_refund"):
+            spark, error = self.build({table: 2})
+            self.assertIsNotNone(error, table)
+            self.assertIn(table, str(error))
+            written = [e for e in spark.log if e[0] in ("view",) or (e[0] == "sql" and not e[1].startswith("SELECT"))]
+            self.assertEqual([], written, table)      # 테이블 생성·뷰·MERGE가 하나도 없다
+            self.assertEqual([], spark.dataframes)
+
+    def test_the_check_groups_by_the_table_primary_key(self):
+        spark, _ = self.build({})
+        checks = [e[1] for e in spark.log if e[0] == "sql" and e[1].startswith("SELECT COUNT(*) AS n FROM (SELECT")]
+        self.assertEqual(2, len(checks))
+        self.assertTrue(any("GROUP BY channel, order_item_id HAVING COUNT(*) > 1" in c for c in checks))
+        self.assertTrue(any("GROUP BY channel, refund_id HAVING COUNT(*) > 1" in c for c in checks))
 
 
 if __name__ == "__main__":

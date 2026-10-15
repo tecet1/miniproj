@@ -56,6 +56,10 @@ class FakeDF:
     def where(self, condition):
         return self
 
+    def dropDuplicates(self, subset):
+        self.dedup_subset = subset
+        return self
+
     def select(self, *columns):
         self.selected = [c if isinstance(c, str) else c.name for c in columns]
         return self
@@ -170,6 +174,22 @@ class TestModuleShape(unittest.TestCase):
     def test_result_schema_matches_convert_row_keys(self):
         keys = [part.split(" ")[0] for part in silver_stream.RESULT_SCHEMA.split(", ")]
         self.assertEqual(["event_id", "event_type", "event_json", "reason_code"], keys)
+
+
+
+class TestOrderItemsDedupe(unittest.TestCase):
+    def test_order_items_are_deduplicated_on_the_primary_key(self):
+        """같은 주문의 ORDER_CREATED가 여러 번 와도 상품 행은 (channel, order_item_id)로 한 번만 남긴다 (event_spec.md 1.3절)."""
+        with mock.patch.object(silver_stream, "F", FakeF):
+            df = silver_stream.build_order_items(FakeDF())
+        self.assertEqual(TABLES["order_items"]["pk"], df.dedup_subset)
+        self.assertEqual(column_names("order_items"), df.selected)
+
+    def test_other_event_tables_are_not_deduplicated_here(self):
+        """이벤트 테이블은 이벤트 단위로 이미 (channel, event_id)당 1건이다 (dedupe_events)."""
+        with mock.patch.object(silver_stream, "F", FakeF):
+            df = silver_stream.build_orders(FakeDF())
+        self.assertFalse(hasattr(df, "dedup_subset"))
 
 
 if __name__ == "__main__":

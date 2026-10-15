@@ -128,5 +128,67 @@ class TestCanonical(unittest.TestCase):
         self.assertEqual(payment["payment_method"], "VIRTUAL_ACCOUNT")
 
 
+
+class TestErrorCases(unittest.TestCase):
+    """S24~S28: 명세의 업무 키·참조 위반을 일부러 만드는 시나리오. 생성기가 의도한 이벤트 구조를 만드는지만 본다 (파이프라인 결과의 정답이 아니다)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.skus = scenario_loader.load_skus(CONTRACTS / "skus.json")
+        cls.by_id = {s["id"]: s for s in scenario_loader.load_scenarios(CONTRACTS / "scenarios.json")}
+
+    def events(self, scenario_id, channel="A"):
+        return canonical.build_events(self.by_id[scenario_id], self.skus, channel)
+
+    def test_s24_two_successful_payments_differ_in_event_and_payment_id(self):
+        _, first, second = self.events("S24")
+        self.assertEqual(("PAYMENT_SUCCEEDED", "PAYMENT_SUCCEEDED"), (first["event_type"], second["event_type"]))
+        self.assertEqual(first["order_id"], second["order_id"])
+        self.assertNotEqual(first["event_id"], second["event_id"])
+        self.assertNotEqual(first["payment_id"], second["payment_id"])
+        self.assertEqual(first["payment_amount"], second["payment_amount"])
+
+    def test_s25_order_created_twice_with_different_event_ids(self):
+        first, second, _ = self.events("S25")
+        self.assertEqual(("ORDER_CREATED", "ORDER_CREATED"), (first["event_type"], second["event_type"]))
+        self.assertNotEqual(first["event_id"], second["event_id"])
+        self.assertEqual(first["order_id"], second["order_id"])
+        self.assertEqual(first["items"], second["items"])
+
+    def test_s26_refund_points_at_the_failed_payment(self):
+        events = self.events("S26")
+        failed = next(e for e in events if e["event_type"] == "PAYMENT_FAILED")
+        succeeded = next(e for e in events if e["event_type"] == "PAYMENT_SUCCEEDED")
+        refund = next(e for e in events if e["event_type"] == "REFUND_SUCCEEDED")
+        self.assertEqual(failed["payment_id"], refund["payment_id"])
+        self.assertNotEqual(succeeded["payment_id"], refund["payment_id"])
+        self.assertEqual(refund["order_id"], failed["order_id"])
+
+    def test_normal_refund_still_points_at_the_successful_payment(self):
+        _, payment, refund = self.events("S09")
+        self.assertEqual(payment["payment_id"], refund["payment_id"])
+
+    def test_s27_refund_order_id_differs_but_payment_and_item_stay(self):
+        events = self.events("S27")
+        created = next(e for e in events if e["event_type"] == "ORDER_CREATED" and e["order_id"] == "A-S27-1")
+        payment = next(e for e in events if e["event_type"] == "PAYMENT_SUCCEEDED" and e["order_id"] == "A-S27-1")
+        refund = next(e for e in events if e["event_type"] == "REFUND_SUCCEEDED")
+        self.assertEqual("A-S27-2", refund["order_id"])
+        self.assertEqual(payment["payment_id"], refund["payment_id"])
+        self.assertEqual(created["items"][0]["order_item_id"], refund["order_item_id"])
+        self.assertEqual("A-S27-1-E3", refund["event_id"])
+
+    def test_s28_second_item_row_reuses_the_first_order_item_id(self):
+        created = self.events("S28")[0]
+        self.assertEqual(2, len(created["items"]))
+        self.assertEqual(created["items"][0]["order_item_id"], created["items"][1]["order_item_id"])
+        self.assertNotEqual(created["items"][0]["product_id"], created["items"][1]["product_id"])
+        self.assertEqual(108000, self.events("S28")[1]["payment_amount"])
+
+    def test_normal_scenarios_keep_distinct_item_ids(self):
+        created = self.events("S04")[0]
+        self.assertEqual(2, len({item["order_item_id"] for item in created["items"]}))
+
+
 if __name__ == "__main__":
     unittest.main()

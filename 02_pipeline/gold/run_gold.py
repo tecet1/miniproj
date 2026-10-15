@@ -10,7 +10,7 @@
 # COMMAND ----------
 
 from gold_build import build_gold
-from gold_check import check_gold
+from gold_check import check_gold, report_exclusions
 
 SILVER_SCHEMA = "commerce_poc.silver"
 GOLD_SCHEMA = "commerce_poc.gold"
@@ -37,6 +37,11 @@ build_gold(spark, SILVER_SCHEMA, GOLD_SCHEMA)
 
 # 비어 있으면 자체 정합성 검사를 통과한 것이다
 print(check_gold(spark, SILVER_SCHEMA, GOLD_SCHEMA) or "OK")
+
+# COMMAND ----------
+
+# 제외 보고: 업무 키 위반 주문(주문 생성 2건 이상, 결제 성공 2건 이상)과 무효 환불은 Gold에서 빠진다 (event_spec.md 6.1·6.6절). 0이 아니면 건수를 확인한다
+print(report_exclusions(spark, SILVER_SCHEMA))
 
 # COMMAND ----------
 

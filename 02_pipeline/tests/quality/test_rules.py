@@ -36,7 +36,7 @@ class TestShippedRules(unittest.TestCase):
     def test_every_existing_value_check_has_a_row_rule(self):
         """validate_values.py의 값 검사가 빠짐없이 규칙으로 표현되어 있다 (필드별)."""
         for column in ("shipping_fee", "quantity", "unit_price", "item_discount", "payment_amount",
-                       "refund_quantity", "refund_amount", "product_id"):
+                       "refund_quantity", "refund_amount", "product_id", "order_item_id"):
             self.assertTrue([r for r in ROW if column in r["expect"]], column)
 
     def test_row_rules_cover_every_event_type_that_validate_values_checks(self):

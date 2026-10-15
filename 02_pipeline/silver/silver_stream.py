@@ -113,10 +113,14 @@ def build_orders(events_df):
 
 
 def build_order_items(events_df):
-    """ORDER_CREATED 이벤트의 items[] 한 건 -> order_items 1행. received_at은 이 테이블에 없다."""
+    """ORDER_CREATED 이벤트의 items[] 한 건 -> order_items 1행. received_at은 이 테이블에 없다.
+
+    같은 주문의 ORDER_CREATED가 event_id만 달리 여러 번 와도 상품 행은 (channel, order_item_id)로 한 번만 남긴다.
+    insert-only MERGE는 같은 배치 소스 안의 중복 키를 막지 못하기 때문이다 (event_spec.md 1.3절 중복 제거).
+    """
     items = events_df.where(ev("event_type") == "ORDER_CREATED").select(
         "channel", ev("order_id").alias("order_id"), F.explode(ev("items")).alias("item"))
-    return select_table(items, "order_items", {
+    rows = select_table(items, "order_items", {
         "channel": F.col("channel"),
         "order_item_id": F.col("item.order_item_id"),
         "order_id": F.col("order_id"),
@@ -127,6 +131,7 @@ def build_order_items(events_df):
         "unit_price": F.col("item.unit_price"),
         "item_discount": F.col("item.item_discount"),
     })
+    return rows.dropDuplicates(TABLES["order_items"]["pk"])
 
 
 def build_cancellations(events_df):

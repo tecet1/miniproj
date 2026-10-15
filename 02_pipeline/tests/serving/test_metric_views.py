@@ -44,11 +44,15 @@ class TestFixtureMetrics(unittest.TestCase):
                          [(r["refund_type"], r["refund_reason"], r["refund_amount"]) for r in reasons])
 
     def test_additive_measures_add_up_over_any_dimension(self):
-        for dim in ("payment_date", "channel_name", "method_name", "category", "product_id"):
+        """어느 기준으로 나눠도 합이 전체 값과 같다 (전체 값은 기준 없이 따로 조회한다)."""
+        total = query(self.con, SALES, [], ["total_sales", "refund_amount", "item_count"])[0]
+        for dim in ("payment_date", "channel_name", "method_name", "category", "product_id", "payment_hour"):
             rows = query(self.con, SALES, [dim], ["total_sales", "refund_amount", "item_count"])
             with self.subTest(dimension=dim):
-                self.assertEqual((1266000, 105000, 30), (sum(r["total_sales"] for r in rows),
-                                 sum(r["refund_amount"] for r in rows), sum(r["item_count"] for r in rows)))
+                self.assertEqual((total["total_sales"], total["refund_amount"], total["item_count"]),
+                                 (sum(r["total_sales"] for r in rows), sum(r["refund_amount"] for r in rows),
+                                  sum(r["item_count"] for r in rows)))
+                self.assertGreater(total["total_sales"], 0)
 
     def test_non_additive_customers_are_recounted_not_summed(self):
         """상품 단위로 나누면 한 고객이 여러 상품에 걸쳐 중복되므로 합이 전체 결제고객수(18)와 달라진다."""
@@ -170,6 +174,33 @@ class TestMetricCheck(unittest.TestCase):
     def test_measure_sql_format(self):
         self.assertEqual("SELECT MEASURE(a) AS x FROM v", metric_check.measure_sql("v", {"x": "a"}))
         self.assertEqual("SELECT c, MEASURE(a) AS x FROM v GROUP BY c", metric_check.measure_sql("v", {"x": "a"}, "c"))
+
+
+
+class TestPaymentHour(unittest.TestCase):
+    """결제 시간대(payment_hour): 결제 시각을 KST로 바꾼 시 0~23 (event_spec.md 6.5절). sales_metrics에만 있다."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.con = g.gold_connection(silver.fixture_rows())
+
+    def test_only_sales_metrics_has_the_dimension(self):
+        self.assertIn("payment_hour", [name for name, _ in metric_defs.SALES_METRICS["dimensions"]])
+        self.assertNotIn("payment_hour", [name for name, _ in metric_defs.REFUND_METRICS["dimensions"]])
+
+    def test_expression_converts_utc_to_kst_hour(self):
+        self.assertEqual("hour(from_utc_timestamp(payment_at, 'Asia/Seoul'))", dict(metric_defs.SALES_METRICS["dimensions"])["payment_hour"])
+
+    def test_hours_are_kst_not_utc(self):
+        by_hour = {r["payment_hour"]: r["total_sales"] for r in query(self.con, SALES, ["payment_hour"], ["total_sales"])}
+        self.assertIn(0, by_hour)         # S23: 결제 UTC 15:30 = KST 00:30
+        self.assertIn(10, by_hour)        # S01: 결제 UTC 01:00:30 = KST 10:00
+        self.assertTrue(set(by_hour) <= set(range(24)))
+
+    def test_hourly_sales_add_up_to_the_total(self):
+        by_hour = query(self.con, SALES, ["payment_hour"], ["total_sales"])
+        total = query(self.con, SALES, [], ["total_sales"])[0]["total_sales"]
+        self.assertEqual(total, sum(r["total_sales"] for r in by_hour))
 
 
 if __name__ == "__main__":
