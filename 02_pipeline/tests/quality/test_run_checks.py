@@ -179,6 +179,41 @@ class TestReconcileMode(unittest.TestCase):
         create_views.assert_not_called()
 
 
+class TestLayers(unittest.TestCase):
+    def run_layer(self, layer, violations=0):
+        spark = mock.Mock()
+        with mock.patch.object(R, "previous_check_time", return_value=None), mock.patch.object(R, "save_results") as save:
+            spark.sql.side_effect = lambda sql: mock.Mock(first=lambda: {"violations": violations})
+            problems = R.check_layer(spark, SCHEMAS, layer)
+        return problems, save.call_args[0][1]
+
+    def test_only_rules_of_that_layer_run_in_full_mode(self):
+        for layer in ("silver", "gold"):
+            problems, rows = self.run_layer(layer)
+            self.assertEqual([], problems)
+            self.assertEqual({layer}, {r["stage"] for r in rows})
+            self.assertEqual({"full"}, {r["mode"] for r in rows})
+            self.assertEqual(sorted(r["id"] for r in SET_RULES if r["layer"] == layer), sorted(r["rule_id"] for r in rows))
+
+    def test_a_violation_is_returned_as_a_sentence_with_rule_name_and_count(self):
+        problems, rows = self.run_layer("gold", violations=2)
+        self.assertEqual(len([r for r in SET_RULES if r["layer"] == "gold" and r["severity"] == "error"]), len(problems))
+        self.assertTrue(all(": error (2)" in p for p in problems))
+
+    def test_warn_rules_are_recorded_but_do_not_fail_the_layer(self):
+        problems, rows = self.run_layer("silver", violations=1)
+        warned = [r for r in rows if r["status"] == "warn"]
+        self.assertTrue(warned)
+        self.assertFalse([p for p in problems if any(p.startswith(w["rule_id"]) for w in warned)])
+
+    def test_no_layer_filter_runs_every_rule(self):
+        spark = mock.Mock()
+        with mock.patch.object(R, "previous_check_time", return_value=None), mock.patch.object(R, "save_results") as save:
+            spark.sql.side_effect = lambda sql: mock.Mock(first=lambda: {"violations": 0})
+            R.run_quality_checks(spark, SCHEMAS, mode="full", now=NOW)
+        self.assertEqual(len(SET_RULES), len(save.call_args[0][1]))
+
+
 # ── 로컬 Spark: 실제 규칙 SQL이 증분 범위만 보는지 ─────────────────────────────────────────────
 SPARK = local_spark()
 BRONZE_EVENTS = [("channel", "STRING"), ("payload", "STRING"), ("eh_partition", "INT"), ("eh_offset", "BIGINT")]

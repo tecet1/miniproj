@@ -1,0 +1,9 @@
+{
+  "triggers": {
+    "bronze": {"processingTime": "10 seconds"},
+    "silver": {"processingTime": "30 seconds"},
+    "gold": {"processingTime": "60 seconds"}
+  },
+  "reconcile_schedule": "0 0 3 * * ?",
+  "note": "트리거 간격만 여기서 바꾼다 (관찰값에 따라 조정, 정량 목표 아님). availableNow로 바꾸면 쌓인 분량만 처리하고 끝난다."
+}

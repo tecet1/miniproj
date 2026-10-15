@@ -67,12 +67,14 @@ def parse_envelope(kafka_df):
     )
 
 
-def write_bronze(df, table: str, checkpoint_path: str):
-    """df를 Delta 테이블에 append하고, 쌓인 분량을 모두 처리하면 끝낸다.
+def write_bronze(df, table: str, checkpoint_path: str, trigger: dict = None):
+    """df를 Delta 테이블에 append한다. 기본(trigger 없음)은 쌓인 분량을 모두 처리하면 끝낸다.
+
+    trigger는 writeStream.trigger에 넘길 인자다. {"processingTime": "10 seconds"}를 주면 끝나지 않고 계속 돈다 (상시 스트리밍, 계획 07 카드 7-F).
 
     구현 힌트: writeStream.option("checkpointLocation", ...).trigger(availableNow=True).toTable(table)
     쿼리가 끝날 때까지 기다린다 (awaitTermination). 같은 체크포인트로 다시 실행하면 이미 읽은 offset은 읽지 않는다.
     """
     query = df.writeStream \
-        .option("checkpointLocation", checkpoint_path).trigger(availableNow=True).toTable(table)
+        .option("checkpointLocation", checkpoint_path).trigger(**(trigger or {"availableNow": True})).toTable(table)
     query.awaitTermination()

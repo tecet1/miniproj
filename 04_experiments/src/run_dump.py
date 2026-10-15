@@ -29,7 +29,7 @@ print(load_dump(spark, TABLE, f"{DUMP_DIR}/dump"), "rows in dump")
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC -- 합성 행(eh_partition = -1)의 채널별 건수. 기대 bronze_rows - 픽스처 24줄과 같아야 한다
+# MAGIC -- 합성 행(eh_partition = -1)의 채널별 건수. 위 셀이 출력한 "N lines"(A 114,534 / B 279,621 / C 176,669)와 같아야 한다
 # MAGIC SELECT channel, COUNT(*) AS rows FROM commerce_poc.bronze.events WHERE eh_partition = -1 GROUP BY channel ORDER BY channel;
 
 # COMMAND ----------

@@ -1,8 +1,7 @@
-"""silver_check의 비교 함수 테스트 (pyspark 없이). Spark 조회 함수는 Databricks에서만 확인한다 (미검증).
+"""silver_check(보고 전용) 테스트 (pyspark 없이). Spark 조회는 Databricks에서만 확인한다 (미검증).
 
-정답(기대값) 비교는 두지 않으므로 이 테스트도 기대값 파일을 읽지 않는다.
+자체 정합성 검사는 규칙 목록(quality/rules.json)으로 옮겼고 tests/quality가 본다. 여기에는 보고 함수만 남았다.
 """
-import inspect
 import sys
 import unittest
 from pathlib import Path
@@ -12,7 +11,6 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "02_pipeline" / "silver"))
 
 import silver_check  # noqa: E402
-from silver_tables import TABLES  # noqa: E402
 
 
 class FakeSpark:
@@ -26,40 +24,19 @@ class FakeSpark:
         return mock.Mock(first=lambda: {"n": self.n})
 
 
-class TestCompareZero(unittest.TestCase):
-    def test_zero_counts_have_no_problem(self):
-        self.assertEqual([], silver_check.compare_zero("PK 중복", {"orders": 0, "payments": 0}))
+class TestReportByDesign(unittest.TestCase):
+    def test_counts_are_reported_by_name_and_never_fail(self):
+        report = silver_check.report_by_design(FakeSpark(7), "s")
+        self.assertEqual({"업무 ID 중복 orders", "업무 ID 중복 order_cancellations", "업무 ID 중복 refunds",
+                          "참조 누락 refunds->order_items", "참조 누락 refunds->payments(SUCCEEDED)"}, set(report))
+        self.assertEqual({7}, set(report.values()))
 
-    def test_non_zero_counts_are_reported(self):
-        self.assertEqual(["PK 중복 payments: 2건"], silver_check.compare_zero("PK 중복", {"orders": 0, "payments": 2}))
+    def test_clean_silver_reports_zeros(self):
+        self.assertEqual({0}, set(silver_check.report_by_design(FakeSpark(0), "s").values()))
 
-
-class TestNoExpectedValues(unittest.TestCase):
-    def test_no_expected_file_or_path_argument(self):
-        self.assertEqual(["spark", "schema", "bronze_table"], list(inspect.signature(silver_check.check_silver).parameters))
-        self.assertFalse(hasattr(silver_check, "DEFAULT_EXPECTED"))
-
-    def test_checks_have_no_time_cutoff(self):
-        self.assertNotIn("since", inspect.signature(silver_check.check_silver).parameters)
-
-
-class TestCheckSilver(unittest.TestCase):
-    def test_clean_silver_passes(self):
-        self.assertEqual([], silver_check.check_silver(FakeSpark(0), "s", "b.events"))
-
-    def test_every_check_runs_and_a_violation_is_reported_with_its_label(self):
-        problems = silver_check.check_silver(FakeSpark(2), "s", "b.events")
-        for label in ("PK 중복", "참조 누락", "금액 불일치", "업무 ID 중복", "원본 보존"):
-            self.assertTrue(any(p.startswith(label) for p in problems), (label, problems))
-
-    def test_pk_check_covers_every_silver_table(self):
-        self.assertEqual(set(TABLES), set(silver_check.count_pk_duplicates(FakeSpark(0), "s")))
-
-    def test_quarantine_check_joins_on_bronze_position(self):
-        spark = FakeSpark(0)
-        silver_check.count_quarantine_mismatches(spark, "s", "b.events")
-        self.assertIn("eh_partition", spark.queries[0])
-        self.assertIn("eh_offset", spark.queries[0])
+    def test_the_moved_checks_are_gone_from_this_module(self):
+        for name in ("check_silver", "compare_zero", "count_pk_duplicates", "count_amount_mismatches", "count_quarantine_mismatches"):
+            self.assertFalse(hasattr(silver_check, name), name)
 
 
 if __name__ == "__main__":

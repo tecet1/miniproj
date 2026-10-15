@@ -57,6 +57,11 @@ class TestSql(unittest.TestCase):
         self.assertTrue(sql.startswith("CREATE TABLE IF NOT EXISTS commerce_poc.silver.order_cancellations ("))
         self.assertIn("cancel_created_at TIMESTAMP", sql)
 
+    def test_event_tables_enable_the_change_feed_for_the_incremental_gold_and_quarantine_does_not(self):
+        for table in TABLES:
+            sql = create_table_sql(table, "c.s")
+            self.assertEqual(table != "quarantine", "delta.enableChangeDataFeed = true" in sql, table)
+
 
 if __name__ == "__main__":
     unittest.main()

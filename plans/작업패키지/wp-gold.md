@@ -27,7 +27,7 @@ Silver 변경분에서 이번에 바뀐 주문만 다시 계산해 Gold(`fact_sa
 `02_pipeline/gold/`, `02_pipeline/tests/gold/`. `silver/`, `quality/`, `bronze/`, `03_serving/`, `04_experiments/`는 수정하지 않는다. Silver 테이블의 컬럼이 필요하면 멈추고 보고한다.
 
 ## 상태
-상태: 미검증 / 갱신: 2026-10-15 14:30 / 지금: 명세 변경 7가지 구현 완료(로컬): Silver items ID 중복 격리·order_items 중복 제거, Gold 위반 주문·무효 환불 제외와 보고, 적재 전 PK 중복 검사, payment_hour. 전체 테스트 511건 통과(skipped 21), 변이 17종 확인. Databricks는 미검증 / 다음: 사용자가 run_silver·run_gold·run_metric_views 재실행 / 막힘: 없음
+상태: 완료 / 갱신: 2026-10-15 16:40 / 지금: 명세 변경 7가지 구현과 Databricks 실행 확인 완료(사용자 보고): Gold 위반 주문 2,371·무효 환불 1,435 보고, Metric View 일치, reconcile 8규칙 차이 0 / 다음: 증분 처리 마무리(7-E 등), 노트북을 Job으로 묶기(7-F) / 막힘: 없음 (무효 환불 1,435 = 실패 결제 환불 727(주입과 일치) + order_id 불일치 708(주입 713보다 5건 적음). 차이 5건은 위반 주문을 가리키는 환불(A 1, B 2, C 2)로 확인됨)
 
 ## 공통 규칙 (모든 WP)
 

@@ -115,11 +115,24 @@ def previous_check_time(spark, table: str = RESULTS_TABLE):
     return spark.sql(f"SELECT MAX(checked_at) AS t FROM {table} WHERE mode = 'incremental'").first()["t"]
 
 
+def check_layer(spark, schemas: dict, layer: str, table: str = RESULTS_TABLE) -> list[str]:
+    """한 계층의 집합 규칙을 전수(full)로 돌려 결과를 기록하고, 실패(error·exception)한 규칙의 문장 목록을 돌려준다. 빈 목록이면 통과한다.
+
+    예전 check_silver·check_gold(파이썬 검사)를 이것으로 바꿨다: 검사 항목은 rules.json에 있고 결과는 quality.results에 남는다.
+    warn은 실패로 세지 않는다 (결과 테이블에는 남는다)."""
+    rows = run_quality_checks(spark, schemas, mode="full", table=table, layers=(layer,))
+    return [f"{row['rule_id']}: {row['status']} ({row['violations']})" for row in failed(rows)]
+
+
 def run_quality_checks(spark, schemas: dict, mode: str = "incremental", table: str = RESULTS_TABLE,
-                       overlap: timedelta = DEFAULT_OVERLAP, rules=None, now=None) -> list[dict]:
-    """집합 규칙을 실행하고 결과를 저장한 뒤 결과 행을 돌려준다. schemas = {"bronze": ..., "silver": ..., "gold": ...}"""
+                       overlap: timedelta = DEFAULT_OVERLAP, rules=None, now=None, layers=None) -> list[dict]:
+    """집합 규칙을 실행하고 결과를 저장한 뒤 결과 행을 돌려준다. schemas = {"bronze": ..., "silver": ..., "gold": ...}
+
+    layers = ("silver",)처럼 주면 그 계층의 규칙만 돌린다 (노트북이 자기 단계 직후에 그 단계만 확인할 때)."""
     if rules is None:
         rules = load_rules(RECONCILE_RULES) if mode == "reconcile" else load_rules()
+    if layers:
+        rules = [rule for rule in rules if rule["kind"] != "set" or rule["layer"] in layers]
     now = now or datetime.now(timezone.utc)
     if mode == "reconcile":   # Bronze에서 다시 계산한 recon_* 뷰를 먼저 만든다
         known = {sku["product_id"] for sku in json.loads(SKUS_PATH.read_text(encoding="utf-8"))["skus"]}

@@ -214,6 +214,17 @@ class TestExclusionRules(unittest.TestCase):
         self.assertEqual(([], []), (sales, refunds))
         self.assertEqual((1, 0), self.counts(rows))
 
+    def test_refunds_on_violation_orders_are_counted_in_their_own_bucket_without_double_counting(self):
+        """위반 주문에 붙은 환불은 세 번째 숫자로 따로 센다. 무효 환불과 겹치지 않는다 (겹치면 위반 주문 쪽에만)."""
+        rows = self.base(refunds=[silver.refund("A-X1"), {**silver.refund("A-X1", no=2), "payment_id": "A-X1-P2"}])
+        rows["payments"].append(silver.payment("A-X1", no=2, status="FAILED"))
+        rows["orders"].append({**silver.order("A-X1"), "event_id": "A-X1-order2"})      # 주문 생성 2건 = 위반 주문
+        con = silver.connect(rows)
+        count = lambda sql: silver.run(con, sql)[0]["n"]
+        self.assertEqual(2, count(gold_sql.violation_order_refund_count_sql("silver")))
+        self.assertEqual(0, count(gold_sql.invalid_refund_count_sql("silver")))      # 실패 결제를 가리키는 환불도 위반 주문 쪽에만 센다
+        con.close()
+
     def test_two_successful_payments_make_a_violation_but_failed_retries_do_not(self):
         rows = self.base()
         rows["payments"].append(silver.payment("A-X1", no=2, status="FAILED"))

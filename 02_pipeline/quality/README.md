@@ -68,6 +68,24 @@
 - 로컬 Spark에서 고정 입력(S24~S28 포함)과 오류를 높은 비율로 주입한 합성 데이터, 손으로 만든 변형 51줄을 파이썬 파이프라인 결과와 대조해 모든 규칙이 0임을 확인했고, 실제 테이블을 일부러 틀리게 만든 변이도 잡힘을 확인했다 (`tests/quality/test_reconcile.py`).
 - 한계: JSON 숫자가 문자열("5")로 오면 SQL은 정수로 받아들이고 Silver는 INVALID_TYPE으로 격리한다 (생성기는 "N/A"만 쓴다). 파이프라인이 Bronze를 따라잡기 전에 돌리면 반영 중인 행 때문에 차이가 난다. 중간 뷰를 `localCheckpoint`로 계산해 두므로 서버리스에서는 느릴 수 있다. **Databricks 미검증.**
 
+## 계층 검사와 보고 (카드 7-C)
+
+- 예전 `check_silver`·`check_gold`의 정합성 검사(PK 중복, 결제금액 = 상품합 + 배송비, 환불 합계, 배송비 규칙, Dimension 키 누락, 격리 행 원본 보존)는 모두 `rules.json`의 집합 규칙으로 옮겼다.
+- 노트북은 `run_checks.check_layer(spark, SCHEMAS, "silver" | "gold")`를 부른다. 그 계층의 집합 규칙을 전수로 돌려 `quality.results`에 기록하고, 실패(error·exception) 규칙의 문장 목록을 돌려준다. 빈 목록이면 통과다. warn은 실패로 세지 않는다.
+- 실패가 아닌 **보고**는 따로 남는다: `silver_check.report_by_design`(업무 ID 중복·참조 누락, 일부러 그대로 둔 위반), `gold_check.report_exclusions`(업무 키 위반 주문 / 무효 환불 / 위반 주문에 붙은 환불). 오류를 섞은 데이터에서는 0이 아닌 것이 정상이다.
+
+## Gold 증분 계산 (카드 7-E)
+
+- `gold/gold_incremental.py`: Silver 변경 피드(CDF)에서 바뀐 주문·환불만 찾아 Gold의 해당 키만 다시 계산해 MERGE한다 (`_delete` 표식 행으로 범위 안 옛 행을 지운다). 전체 재계산(`gold_build.build_gold`)과 같은 결과가 나와야 하며, 배치마다 `gold_batch_consistency*` 규칙으로 확인해 `quality.results`에 남긴다.
+- 처음 한 번 `bootstrap`(변경 피드 켜기 + 전체 계산) 후 증분으로 이어 간다. 업무 키 위반 주문, 환불 겹침 규칙은 전체 계산과 같은 SQL 조각(`gold_sql.py`)을 쓴다.
+- 로컬에서는 sqlite로 SQL 의미를 검증했다(무작위 도착·배치 분할 뒤 전체 재계산과 일치). CDF 읽기, 범위 MERGE, 스트림은 **Databricks 미검증**이다.
+
+## 상시 스트리밍과 지연 관찰 (카드 7-F·7-G)
+
+- 트리거 간격은 `02_pipeline/pipeline_config.json`(bronze 10초, silver 30초, gold 60초 `processingTime`)에만 둔다. `stream_config.trigger_for(layer)`가 읽고 형식을 검사한다. 노트북 `bronze/stream_bronze.py`, `silver/stream_silver.py`, `gold/stream_gold.py`는 이를 넘겨 호출만 한다.
+- `jobs/pipeline_job.yml`(Asset Bundle 리소스 정의)이 스트림 3개를 한 Job의 태스크로 묶고(`max_retries: -1`로 실패 시 재시작, 체크포인트가 이어 읽는다), 별도 Job으로 `run_reconcile`을 매일 돌린다. `cluster_id`는 배포할 때 사용자가 채운다. **배포·실행 미검증**.
+- 지연 관찰: `run_latency.py`에 방금 보낸 테스트 주문 번호를 넣으면 Bronze·Silver·Gold에 처음 보이는 시각을 잰다(`latency_probe.py`). 관찰값이고 목표는 없다.
+
 ## 파일
 
 | 파일 | 역할 |
@@ -79,14 +97,15 @@
 | `reconcile_sql.py` | Bronze 재계산 SQL(recon_* 뷰)과 reconcile 규칙 만들기 |
 | `reconcile_rules.json` | Bronze 재계산 대조 규칙 8개 (`reconcile_sql.rule_list()`로 생성) |
 | `run_reconcile.py` | 재계산 대조 노트북(호출만) |
+| `latency_probe.py`, `run_latency.py` | 지연 관찰(테스트 주문이 각 계층에 보이는 시각)과 노트북 |
 | `rules.py` | `load_rules`(읽기·검사), `validate_rules`, `row_violation_condition`(행 규칙 → Spark SQL 위반 조건), `render_set_sql`(집합 규칙 SQL 채우기), `judge`(허용값 판정) |
 
 ## 지금 들어 있는 규칙
 
 - 행 규칙 10개: 기존 `silver/validate_values.py`의 값 검사 8개 + 한 주문 `items` 안 `order_item_id` 중복(2026-10-15) + SKU 기준 데이터 검사(`validate_skus.py`).
-- 집합 규칙 9개: Silver PK 중복(주문·결제·환불은 증분, 상품 행은 전수), 환불→상품 행 참조, 격리 행의 원본 보존, Gold PK 중복 2개, Gold 상품 Dimension 참조. `check_silver`/`check_gold`의 정답(기대값) 비교는 2026-10-15에 제거했다. 남은 자체 정합성 항목(금액 정합성, 배송비 규칙, 다른 Dimension 참조 등)은 카드 7-C에서 규칙으로 옮긴다.
+- 집합 규칙 21개: Silver 8개(PK 중복 — 주문·결제·환불은 증분, 상품 행은 전수 —, 환불→상품 행 참조, 격리 행의 원본 보존, 결제금액 = 상품합 + 배송비 등), Gold 13개(PK 중복, Dimension 키 누락, 환불 합계 일치, 결제금액 대조, 배송비 규칙 등). 실제 목록은 `rules.json`이 기준이다.
 
 ## 한계
 
 - 행 규칙은 로컬 Spark 4.2에서 기존 파이썬 검사(`validate_values`, `validate_skus`)와 같은 이벤트를 같게 가르는지 차분 비교했다(경계값 조합 약 150건, `tests/quality/test_rules_spark.py`). 집합 규칙 SQL은 같은 로컬 Spark에서 위반 있음/없음, 증분 범위를 확인했다. **Databricks(Delta, Unity Catalog)에서는 아직 미검증이다.** 로컬 테스트는 테이블 대신 임시 뷰를 쓴다 (로컬 Windows Spark는 파일 테이블 생성에 Hadoop 도구가 필요함).
-- 기존 결과(`expected.json`, `expected_dump.json`)와 같은지는 카드 7-B에서 확인한다.
+- 기존 정답 파일 비교는 없앴다. 대신 Bronze 재계산 대조(위 절)가 전수 정답 역할을 한다. Silver 네이티브 변환(UDF 없음)은 로컬에서 파이썬 기준 변환과 행 단위로 같음을 확인했고(`tests/silver/test_native_convert.py`), Databricks 실행은 미검증이다.

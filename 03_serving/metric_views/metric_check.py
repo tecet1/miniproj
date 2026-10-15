@@ -7,7 +7,11 @@
 지표 값을 정답과 비교하는 검사는 두지 않는다 (검증은 별도로 진행한다).
 Spark 조회(MEASURE)는 Databricks에서만 돈다 (미검증).
 """
-from gold_check import compare_equal
+
+
+def compare_equal(checks: dict) -> list[str]:
+    """checks = {이름: (실제, 기대)}. 다른 것만 문제로 돌려준다."""
+    return [f"{name}: 기대 {expected}, 실제 {actual}" for name, (actual, expected) in checks.items() if actual != expected]
 
 
 def measure_sql(view: str, measures: dict, group_by: str = "") -> str:

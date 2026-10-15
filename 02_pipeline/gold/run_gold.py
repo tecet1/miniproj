@@ -5,15 +5,22 @@
 # ///
 # MAGIC %md
 # MAGIC # Gold 적재: commerce_poc.silver.* → commerce_poc.gold.*
-# MAGIC `gold_build.py`, `gold_check.py` 호출 (로직 없음)
+# MAGIC `gold_build.py`, `gold_check.py`(제외 보고), `quality/run_checks.py`(규칙 검사) 호출 (로직 없음)
 
 # COMMAND ----------
 
+import os
+import sys
+
+sys.path.append(os.path.abspath("../quality"))   # 노트북 폴더 기준. Git folder에서 quality 모듈을 찾는다 (미검증)
+
 from gold_build import build_gold
-from gold_check import check_gold, report_exclusions
+from gold_check import report_exclusions
+from run_checks import check_layer
 
 SILVER_SCHEMA = "commerce_poc.silver"
 GOLD_SCHEMA = "commerce_poc.gold"
+SCHEMAS = {"bronze": "commerce_poc.bronze", "silver": SILVER_SCHEMA, "gold": GOLD_SCHEMA}
 # ADLS 저장 위치: 스키마의 MANAGED LOCATION. Gold 테이블 6개가 이 아래에 저장된다
 STORAGE_ROOT = "abfss://commerce-poc@swleeteststorage01.dfs.core.windows.net/storage"
 GOLD_PATH = f"{STORAGE_ROOT}/gold"
@@ -35,8 +42,8 @@ build_gold(spark, SILVER_SCHEMA, GOLD_SCHEMA)
 
 # COMMAND ----------
 
-# 비어 있으면 자체 정합성 검사를 통과한 것이다
-print(check_gold(spark, SILVER_SCHEMA, GOLD_SCHEMA) or "OK")
+# 비어 있으면 Gold 집합 규칙(rules.json, layer = gold)을 모두 통과한 것이다. 결과는 quality.results에 남는다
+print(check_layer(spark, SCHEMAS, "gold") or "OK")
 
 # COMMAND ----------
 
@@ -47,7 +54,7 @@ print(report_exclusions(spark, SILVER_SCHEMA))
 
 # 재실행 검증: 같은 Silver로 다시 적재해도 건수와 금액이 그대로여야 한다 (MERGE의 멱등성)
 build_gold(spark, SILVER_SCHEMA, GOLD_SCHEMA)
-print(check_gold(spark, SILVER_SCHEMA, GOLD_SCHEMA) or "OK")
+print(check_layer(spark, SCHEMAS, "gold") or "OK")
 
 # COMMAND ----------
 

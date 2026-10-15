@@ -1,23 +1,23 @@
 """Bronze -> Silver 적재 함수. 노트북은 run_silver만 호출한다. (Databricks에서만 실행 가능 — Spark 동작은 미검증)
 
 흐름 (foreachBatch 안에서 배치 하나마다)
-  Bronze 배치 -> convert_bronze(UDF로 행마다 convert_row)
+  Bronze 배치 -> convert_bronze(Spark 표현식으로 변환, UDF 없음: native_convert.convert가 result와 e 열을 붙인다)
     ├─ result.reason_code 있음 -> build_quarantine -> merge_insert(quarantine)
-    └─ 없음 -> dedupe_events((channel, event_id)당 최초 1건) -> parse_events(event_json 읽기)
+    └─ 없음 -> dedupe_events((channel, event_id)당 최초 1건) -> parse_events(e 구조체 꺼내기)
                  -> build_orders / build_order_items / build_cancellations / build_payments / build_refunds
                  -> 각각 merge_insert (insert-only MERGE)
 pyspark는 Databricks에서만 쓰므로 없어도 모듈을 불러올 수 있게 try/except로 import한다 (로컬·CI 테스트가 pyspark 없이 돌게 하기 위함).
 
-[설계 근거] plans/03_Silver_변환.md 설계 결정 1(UDF), 2(foreachBatch + insert-only MERGE), 5(최초 건 유지)
+[설계 근거] plans/03_Silver_변환.md 설계 결정 2(foreachBatch + insert-only MERGE), 5(최초 건 유지). 결정 1(UDF)은 계획 07 카드 7-B에서 Spark 표현식으로 바꿨다(2026-10-15).
   - 중복 제거 순서: 이벤트 단위 (channel, event_id)를 먼저 제거한 뒤 테이블로 나눈다. 최초 건 = received_at, eh_partition, eh_offset 오름차순.
   - MERGE는 WHEN NOT MATCHED THEN INSERT만 쓴다. 이미 있는 키는 건드리지 않아 foreachBatch가 재시도돼도 행이 늘지 않는다.
   - 같은 배치 안의 중복은 MERGE 전에 dedupe_events가 이미 없앤다. (배치 사이의 중복은 MERGE가 막는다)
-  - 시각: event_time은 ISO 8601 UTC 문자열이므로 F.to_timestamp로 바꾼다.
+  - 시각: native_convert가 event_time을 TIMESTAMP(UTC)로 만든다. 빌더의 F.to_timestamp는 그대로 둬도 값이 같다.
   - 컬럼 이름과 순서는 silver_tables.TABLES를 따른다 (명세 event_spec.md 1.3절). 공통 모델 필드명 -> 테이블 컬럼명 변환은 여기서 한다:
       event_time -> {orders: order_created_at, order_cancellations: cancel_created_at, payments: payment_created_at,
                      refunds: refund_created_at}, fail_reason_code -> payment_fail_reason_code,
       payments.status는 event_type에서 만든다 (SUCCEEDED / FAILED), 나머지는 같은 이름이다.
-  - DataFrame.persist()는 쓰지 않는다. 서버리스 컴퓨트에서 지원되지 않을 수 있고, UDF가 결정적이라 여러 번 돌아도 결과는 같다
+  - DataFrame.persist()는 쓰지 않는다. 서버리스 컴퓨트에서 지원되지 않을 수 있고, 변환이 결정적이라 여러 번 돌아도 결과는 같다
     (성능만 손해). 대량 부하 실험(04_experiments)에서 클래식 클러스터 + persist를 다시 검토한다.
 """
 try:
@@ -26,11 +26,10 @@ try:
 except ImportError:  # 로컬 테스트(pyspark 없음): 모듈만 불러오고 Spark 함수는 호출하지 않는다
     F = Window = None
 
-from convert_row import convert_row
-from silver_tables import EVENT_SCHEMA, TABLES, column_names
+import native_convert
+from silver_tables import TABLES, column_names
 
 BRONZE_COLUMNS = ["channel", "received_at", "payload", "eh_partition", "eh_offset", "eh_enqueued_at", "ingested_at"]
-RESULT_SCHEMA = "event_id string, event_type string, event_json string, reason_code string"
 
 
 def read_bronze(spark, table: str):
@@ -42,13 +41,11 @@ def read_bronze(spark, table: str):
 
 
 def convert_bronze(bronze_df, known_skus: set):
-    """Bronze 행마다 convert_row를 돌려 결과를 struct 컬럼 `result`로 붙인다.
+    """Bronze 행마다 공통 이벤트로 바꿔 struct 열 `result`(event_id, event_type, reason_code)와 `e`(공통 이벤트)를 붙인다.
 
-    lambda가 known_skus를 기억(클로저)하므로 UDF는 컬럼 두 개(channel, payload)만 받는다.
-    convert_row는 예외를 내지 않는다 (실패는 reason_code로 돌려준다).
+    파이썬 UDF 없이 Spark 표현식만 쓴다 (native_convert.convert). 실패는 예외가 아니라 result.reason_code로 돌려준다.
     """
-    convert = F.udf(lambda channel, payload: convert_row(channel, payload, known_skus), RESULT_SCHEMA)
-    return bronze_df.withColumn("result", convert("channel", "payload"))
+    return native_convert.convert(bronze_df, known_skus)
 
 
 def build_quarantine(converted_df):
@@ -66,8 +63,8 @@ def build_quarantine(converted_df):
 def dedupe_events(converted_df):
     """정상 행(reason_code 없음)에서 (channel, event_id)마다 최초 1건만 남긴다.
 
-    최초 건 = received_at, eh_partition, eh_offset 오름차순의 첫 행. result 안의 값은 event_id, event_type,
-    event_json 컬럼으로 풀어 둔다.
+    최초 건 = received_at, eh_partition, eh_offset 오름차순의 첫 행. result 안의 값은 event_id, event_type 컬럼으로 풀고
+    공통 이벤트 구조체 e는 그대로 가져간다.
     """
     window = Window.partitionBy("channel", F.col("result.event_id")).orderBy("received_at", "eh_partition", "eh_offset")
     return (converted_df
@@ -77,12 +74,12 @@ def dedupe_events(converted_df):
             .select(*[F.col(c) for c in BRONZE_COLUMNS],
                     F.col("result.event_id").alias("event_id"),
                     F.col("result.event_type").alias("event_type"),
-                    F.col("result.event_json").alias("event_json")))
+                    F.col("e")))
 
 
 def parse_events(deduped_df):
-    """event_json을 EVENT_SCHEMA로 읽어 struct 컬럼 `e`로 만든다. 출력 컬럼: channel, received_at, e."""
-    return deduped_df.select("channel", "received_at", F.from_json("event_json", EVENT_SCHEMA).alias("e"))
+    """공통 이벤트 구조체 `e`를 그대로 꺼낸다 (native_convert가 이미 타입을 맞춰 만들었다). 출력 컬럼: channel, received_at, e."""
+    return deduped_df.select("channel", "received_at", "e")
 
 
 def ev(name: str):
@@ -225,8 +222,8 @@ def make_batch_handler(schema: str, known_skus: set, after_batch=None):
     return handle
 
 
-def run_silver(spark, bronze_table: str, schema: str, checkpoint_path: str, known_skus: set, after_batch=None) -> None:
-    """Bronze를 읽어 foreachBatch로 Silver에 쓰고, 쌓인 분량을 모두 처리하면 끝낸다.
+def run_silver(spark, bronze_table: str, schema: str, checkpoint_path: str, known_skus: set, after_batch=None, trigger: dict = None) -> None:
+    """Bronze를 읽어 foreachBatch로 Silver에 쓴다. 기본(trigger 없음)은 쌓인 분량을 모두 처리하면 끝낸다. {"processingTime": "30 seconds"}를 주면 계속 돈다.
 
     같은 체크포인트로 다시 실행하면 새 Bronze 행만 읽는다. 처음부터 다시 읽어 멱등을 확인하려면 새 체크포인트 경로를 쓴다.
     """
@@ -234,6 +231,6 @@ def run_silver(spark, bronze_table: str, schema: str, checkpoint_path: str, know
              .writeStream
              .foreachBatch(make_batch_handler(schema, known_skus, after_batch))
              .option("checkpointLocation", checkpoint_path)
-             .trigger(availableNow=True)
+             .trigger(**(trigger or {"availableNow": True}))
              .start())
     query.awaitTermination()

@@ -72,7 +72,9 @@ def column_names(table: str) -> list[str]:
 def create_table_sql(table: str, schema: str) -> str:
     """CREATE TABLE IF NOT EXISTS 문장을 만든다. schema는 "commerce_poc.silver" 같은 카탈로그.스키마."""
     columns = ", ".join(f"{name} {sql_type}" for name, sql_type in TABLES[table]["columns"])
-    return f"CREATE TABLE IF NOT EXISTS {schema}.{table} ({columns})"
+    # 이벤트 테이블 5개는 변경 데이터 피드를 켠다: Gold가 바뀐 주문만 다시 계산하려고 읽는다 (계획 07 카드 7-E). 격리 테이블은 읽는 쪽이 없다.
+    properties = "" if table == "quarantine" else " TBLPROPERTIES (delta.enableChangeDataFeed = true)"
+    return f"CREATE TABLE IF NOT EXISTS {schema}.{table} ({columns}){properties}"
 
 
 def create_tables(spark, schema: str) -> None:

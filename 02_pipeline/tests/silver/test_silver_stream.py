@@ -171,9 +171,18 @@ class TestModuleShape(unittest.TestCase):
         names = [name for name, _ in TABLES["quarantine"]["columns"]]
         self.assertEqual(silver_stream.BRONZE_COLUMNS + ["reason_code", "quarantined_at"], names)
 
-    def test_result_schema_matches_convert_row_keys(self):
-        keys = [part.split(" ")[0] for part in silver_stream.RESULT_SCHEMA.split(", ")]
-        self.assertEqual(["event_id", "event_type", "event_json", "reason_code"], keys)
+    def test_conversion_is_native_spark_with_no_python_udf(self):
+        """UDF 제거(계획 07 카드 7-B): silver_stream은 파이썬 변환(convert_row)이나 F.udf를 쓰지 않는다."""
+        text = Path(silver_stream.__file__).read_text(encoding="utf-8")
+        code = text.split('"""', 2)[2]
+        self.assertNotIn("F.udf", code)
+        self.assertNotIn("convert_row", code)
+        self.assertFalse(hasattr(silver_stream, "RESULT_SCHEMA"))
+
+    def test_convert_bronze_delegates_to_native_convert(self):
+        with mock.patch.object(silver_stream.native_convert, "convert", return_value="converted") as convert:
+            self.assertEqual("converted", silver_stream.convert_bronze("bronze", {"SKU-001"}))
+        convert.assert_called_once_with("bronze", {"SKU-001"})
 
 
 

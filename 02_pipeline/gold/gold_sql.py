@@ -43,8 +43,16 @@ def _not_violating(silver: str, alias: str):
     return join, "vo.order_id IS NULL"
 
 
-def valid_refund_sql(silver: str, date_expr=kst_date) -> str:
-    """유효 환불 1건 = 1행 (취소·업무 키 위반 주문의 환불 제외). 열은 두 Fact가 필요한 것만이다."""
+def _restrict(alias: str, view, key: str) -> str:
+    """증분 재계산용 범위 제한: 작은 뷰(channel, key)와 조인해 그 키의 행만 남긴다. view가 없으면 제한하지 않는다."""
+    return f"JOIN {view} scope_{key} ON scope_{key}.channel = {alias}.channel AND scope_{key}.{key} = {alias}.{key} " if view else ""
+
+
+def valid_refund_sql(silver: str, date_expr=kst_date, orders=None, refunds=None) -> str:
+    """유효 환불 1건 = 1행 (취소·업무 키 위반 주문의 환불 제외). 열은 두 Fact가 필요한 것만이다.
+
+    orders·refunds는 증분 재계산 범위다: (channel, order_id) 뷰이면 그 주문의 환불만, (channel, refund_id) 뷰이면 그 환불만 계산한다 (None이면 전체).
+    """
     violation_join, not_violating = _not_violating(silver, "r")
     return (
         f"SELECT r.channel AS channel, r.refund_id AS refund_id, i.product_id AS product_id, "
@@ -56,14 +64,15 @@ def valid_refund_sql(silver: str, date_expr=kst_date) -> str:
         f"JOIN {silver}.order_items i ON i.channel = r.channel AND i.order_item_id = r.order_item_id "
         f"JOIN {silver}.orders o ON o.channel = r.channel AND o.order_id = r.order_id "
         f"JOIN {silver}.payments p ON p.channel = r.channel AND p.payment_id = r.payment_id AND p.status = 'SUCCEEDED' "
+        f"{_restrict('r', orders, 'order_id')}{_restrict('r', refunds, 'refund_id')}"
         f"{violation_join} "
         f"WHERE r.order_id = i.order_id AND r.order_id = p.order_id AND {not_violating} "
         f"AND NOT {_has_cancellation(silver, 'r')}"
     )
 
 
-def sales_item_sql(silver: str, date_expr=kst_date) -> str:
-    """fact_sales_item: 결제 성공한 주문상품 1행."""
+def sales_item_sql(silver: str, date_expr=kst_date, orders=None) -> str:
+    """fact_sales_item: 결제 성공한 주문상품 1행. orders가 (channel, order_id) 뷰이면 그 주문의 행만 계산한다 (증분 재계산)."""
     violation_join, not_violating = _not_violating(silver, "i")
     return (
         f"SELECT i.channel AS channel, i.order_item_id AS order_item_id, i.product_id AS product_id, "
@@ -77,23 +86,30 @@ def sales_item_sql(silver: str, date_expr=kst_date) -> str:
         f"FROM {silver}.order_items i "
         f"JOIN {silver}.orders o ON o.channel = i.channel AND o.order_id = i.order_id "
         f"JOIN {silver}.payments p ON p.channel = i.channel AND p.order_id = i.order_id AND p.status = 'SUCCEEDED' "
+        f"{_restrict('i', orders, 'order_id')}"
         f"LEFT JOIN (SELECT channel, order_item_id, CAST(SUM(refund_quantity) AS INT) AS refund_quantity, "
         f"SUM(refund_amount) AS refund_amount, MAX(refund_date) AS last_refund_date "
-        f"FROM ({valid_refund_sql(silver, date_expr)}) v GROUP BY channel, order_item_id) r "
+        f"FROM ({valid_refund_sql(silver, date_expr, orders=orders)}) v GROUP BY channel, order_item_id) r "
         f"ON r.channel = i.channel AND r.order_item_id = i.order_item_id "
         f"{violation_join} "
         f"WHERE NOT {_has_cancellation(silver, 'i')} AND {not_violating}"
     )
 
 
-def refund_sql(silver: str, date_expr=kst_date) -> str:
-    """fact_refund: 유효 환불 이벤트 1행. payment_date는 원결제의 결제일이다."""
-    return valid_refund_sql(silver, date_expr)
+def refund_sql(silver: str, date_expr=kst_date, refunds=None) -> str:
+    """fact_refund: 유효 환불 이벤트 1행. payment_date는 원결제의 결제일이다. refunds가 (channel, refund_id) 뷰이면 그 환불만 계산한다 (증분 재계산)."""
+    return valid_refund_sql(silver, date_expr, refunds=refunds)
 
 
 def violation_order_count_sql(silver: str) -> str:
     """업무 키 위반으로 Gold에서 제외된 주문 수 (event_spec.md 6.6절 보고용)."""
     return f"SELECT COUNT(*) AS n FROM ({violation_orders_sql(silver)}) v"
+
+
+def violation_order_refund_count_sql(silver: str) -> str:
+    """업무 키 위반 주문에 붙은 환불 수. 이 환불은 무효 환불이 아니라 위반 주문 쪽으로 세고 Gold에서 제외된다 (겹치는 경우를 한 곳에만 센다)."""
+    return (f"SELECT COUNT(*) AS n FROM {silver}.refunds r JOIN ({violation_orders_sql(silver)}) vo "
+            f"ON vo.channel = r.channel AND vo.order_id = r.order_id")
 
 
 def invalid_refund_count_sql(silver: str) -> str:
