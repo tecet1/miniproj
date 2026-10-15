@@ -4,14 +4,20 @@
 [모드]
   incremental  scope가 incremental인 규칙만, since 이후에 들어온 행만 본다. 운영 중에 자주 돈다.
   full         모든 집합 규칙을 since 없이(1970-01-01부터) 전체에 돌린다. 가끔 도는 점검이다.
+  reconcile    reconcile_rules.json의 규칙(Bronze 원본에서 독립 경로로 다시 계산한 Silver·Gold와 실제 테이블의 행 단위 비교)을 전체에 돌린다.
+               규칙을 돌리기 전에 reconcile_sql.create_views가 recon_* 임시 뷰를 만든다. 긴 주기 배치로 돌린다. 파이프라인이 Bronze를 다 따라잡은 뒤에 돌려야
+               반영 중인 행 때문에 차이가 나지 않는다 (진행 중 데이터의 기준 시각 처리는 아직 없다).
 [since] 직전 incremental 실행 시각에서 overlap(기본 10분)을 뺀 값이다. 직전 실행 직후에 Silver에 늦게 반영된 행을 놓치지 않으려는 겹침이고,
         규칙은 위반 건수를 세기만 하므로 겹쳐서 다시 봐도 결과가 달라지지 않는다. 기록이 없으면(첫 실행) 전수와 같다.
 [한계] incremental 규칙은 received_at(또는 ingested_at)으로 범위를 자른다. 덤프처럼 received_at이 과거인 행은 증분에 걸리지 않으므로 full 모드로 본다.
 [결과 행] RESULT_COLUMNS 한 줄 = 규칙 하나의 한 번 실행. status는 pass / warn / error / exception(SQL 실행 실패, violations는 NULL).
 Spark를 쓰는 함수(previous_check_time, save_results, create_results_sql 실행)는 Databricks에서만 확인한다 (미검증). 나머지는 pyspark 없이 로컬에서 테스트한다.
 """
+import json
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
+import reconcile_sql
 from rules import judge, load_rules, render_set_sql
 
 RESULTS_TABLE = "commerce_poc.quality.results"
@@ -19,7 +25,10 @@ RESULT_COLUMNS = [("run_id", "STRING"), ("checked_at", "TIMESTAMP"), ("rule_id",
                   ("scope", "STRING"), ("mode", "STRING"), ("severity", "STRING"), ("status", "STRING"),
                   ("violations", "BIGINT"), ("max_allowed", "INT"), ("since", "TIMESTAMP"), ("batch_id", "BIGINT"),
                   ("detail", "STRING")]
-MODES = ("incremental", "full")
+MODES = ("incremental", "full", "reconcile")
+ROOT = Path(__file__).resolve().parents[2]
+RECONCILE_RULES = Path(__file__).resolve().parent / "reconcile_rules.json"
+SKUS_PATH = ROOT / "01_contracts" / "contracts" / "skus.json"
 EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 DEFAULT_OVERLAP = timedelta(minutes=10)
 FAILED_STATUSES = ("error", "exception")
@@ -52,16 +61,16 @@ def sql_timestamp(moment: datetime) -> str:
 
 
 def select_rules(rules: list, mode: str) -> list:
-    """집합 규칙 중 이 모드에서 돌릴 것. incremental은 증분 규칙만, full은 전부."""
+    """집합 규칙 중 이 모드에서 돌릴 것. incremental은 증분 규칙만, full과 reconcile은 전부 (reconcile은 reconcile 규칙 목록을 받는다)."""
     if mode not in MODES:
         raise ValueError(f"mode는 {MODES} 중 하나여야 한다: {mode!r}")
     sets = [rule for rule in rules if rule["kind"] == "set"]
-    return [rule for rule in sets if mode == "full" or rule["scope"] == "incremental"]
+    return [rule for rule in sets if mode != "incremental" or rule["scope"] == "incremental"]
 
 
 def since_for(mode: str, previous, overlap: timedelta = DEFAULT_OVERLAP) -> datetime:
-    """증분 시작 시각. full이거나 직전 기록이 없으면 EPOCH(전체), 아니면 직전 실행 시각 - overlap."""
-    if mode == "full" or previous is None:
+    """증분 시작 시각. incremental이 아니거나 직전 기록이 없으면 EPOCH(전체), 아니면 직전 실행 시각 - overlap."""
+    if mode != "incremental" or previous is None:
         return EPOCH
     return previous - overlap
 
@@ -109,8 +118,12 @@ def previous_check_time(spark, table: str = RESULTS_TABLE):
 def run_quality_checks(spark, schemas: dict, mode: str = "incremental", table: str = RESULTS_TABLE,
                        overlap: timedelta = DEFAULT_OVERLAP, rules=None, now=None) -> list[dict]:
     """집합 규칙을 실행하고 결과를 저장한 뒤 결과 행을 돌려준다. schemas = {"bronze": ..., "silver": ..., "gold": ...}"""
-    rules = rules if rules is not None else load_rules()
+    if rules is None:
+        rules = load_rules(RECONCILE_RULES) if mode == "reconcile" else load_rules()
     now = now or datetime.now(timezone.utc)
+    if mode == "reconcile":   # Bronze에서 다시 계산한 recon_* 뷰를 먼저 만든다
+        known = {sku["product_id"] for sku in json.loads(SKUS_PATH.read_text(encoding="utf-8"))["skus"]}
+        reconcile_sql.create_views(spark, f"{schemas['bronze']}.events", known)
     since = since_for(mode, previous_check_time(spark, table), overlap)
     run_id = f"{mode}-{now.strftime('%Y%m%dT%H%M%S')}"
     rows = run_set_rules(lambda sql: spark.sql(sql).first()["violations"], rules, schemas, mode, since, run_id, now)

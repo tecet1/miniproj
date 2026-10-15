@@ -13,7 +13,12 @@
   - 같은 날의 시나리오는 (시드, 날짜, 월 경로)로만 정해진다. 월 경로는 시작 기준월부터 누적하므로, 종료일을 바꿔도 종료 11일 전까지의 날은 그대로다
     (그 뒤 날짜는 종료일을 넘는 환불이 빠져서 달라진다).
   - 결제수단·사유는 채널 변환기가 매핑하는 값만 쓴다 (OTHER는 적재 단계가 결측·미정의 값을 바꿔 만드는 값이라 이벤트에서 만들지 않는다).
-  - 오류 주입(fault)은 하지 않는다 (픽스처가 이미 다룬다). 이벤트 일부는 중복 전송(send_count 2)한다.
+  - 이벤트 일부는 중복 전송(send_count 2)한다.
+  - 오류 주입(2026-10-15): 설정의 error_rates에 종류별 비율(주문 단위)을 주면 그 비율만큼 주문을 오류 주문으로 바꾼다. 비율이 없거나 모두 0이면 아무것도 바꾸지 않는다.
+    종류는 ERROR_KINDS(격리 대상 오류, 이중 결제, 주문 생성 중복, 실패 결제를 가리키는 환불, 환불 order_id 불일치, items 상품 ID 중복)다.
+    주입은 (시드, 날짜, 주문 번호)로 따로 정한 난수를 쓰므로 오류가 없는 주문은 주입 여부와 상관없이 그대로이고, 같은 설정이면 같은 주문이 같은 오류가 된다.
+    종류가 그 주문에 맞지 않으면(환불이 없는 주문의 환불 오류 등) 바꾸지 않으므로 실제 비율은 설정보다 작을 수 있다. 오류가 된 주문에는 "error": 종류 키가 붙는다.
+    오류 형식은 01_contracts의 시나리오 키(fault, payment: failed, order_no, reuse_item_id_of)와 같다.
   - 환불 시각이 종료일 끝을 넘으면 그 환불은 만들지 않는다 (아직 일어나지 않은 일이므로).
   - 포아송 표본은 평균 30 미만은 Knuth 방식, 이상은 정규 근사(반올림)다. 음이항의 과산포가 근사 오차보다 훨씬 크다.
 expected.py와 canonical.py를 import하지 않는다 (기대값 독립성).
@@ -201,6 +206,129 @@ def mark_duplicates(rng: random.Random, events: list[dict], rate: float) -> None
             event["send_count"] = 2
 
 
+# ── 오류 주입 ─────────────────────────────────────────────────────────────────────
+ERROR_KINDS = ("fault", "double_payment", "duplicate_order_created", "refund_to_failed_payment", "refund_order_mismatch",
+               "duplicate_item_id")
+FAULTS = ("MISSING_REQUIRED", "INVALID_TYPE", "UNKNOWN_EVENT_TYPE")   # 채널 원본에 심는 오류. 적용 가능한 이벤트가 다르다 (faults.py)
+
+
+def error_rates(config: dict) -> dict:
+    """설정의 error_rates 중 0이 아닌 것. 모르는 종류, 0~1 밖의 값, 합이 1 초과면 ValueError."""
+    rates = config.get("error_rates") or {}
+    unknown = set(rates) - set(ERROR_KINDS)
+    if unknown:
+        raise ValueError(f"error_rates의 알 수 없는 종류: {sorted(unknown)}")
+    for kind, rate in rates.items():
+        if isinstance(rate, bool) or not isinstance(rate, (int, float)) or not 0 <= rate <= 1:
+            raise ValueError(f"error_rates.{kind}는 0~1 사이여야 한다: {rate!r}")
+    if sum(rates.values()) > 1:
+        raise ValueError("error_rates의 합이 1을 넘는다")
+    return {kind: rate for kind, rate in rates.items() if rate > 0}
+
+
+def _copy_event(event: dict, offset_sec: int) -> dict:
+    """event의 복사본. 시각만 바꾸고 중복 전송·오류 표시는 가져오지 않는다."""
+    copy = {key: value for key, value in event.items() if key not in ("send_count", "fault")}
+    copy["offset_sec"] = offset_sec
+    return copy
+
+
+def _inject_fault(rng: random.Random, order: dict) -> bool:
+    """이벤트 하나에 채널 원본 오류를 심는다. 누락은 결제 이벤트에만, 형식 오류는 주문 생성에만 맞다."""
+    events = order["events"]
+    candidates = [("UNKNOWN_EVENT_TYPE", e) for e in events]
+    candidates += [("MISSING_REQUIRED", e) for e in events if e["type"].startswith("PAYMENT_")]
+    candidates += [("INVALID_TYPE", e) for e in events if e["type"] == "ORDER_CREATED"]
+    fault, event = rng.choice(candidates)
+    event["fault"] = fault
+    return True
+
+
+def _inject_double_payment(rng: random.Random, order: dict) -> bool:
+    events = order["events"]
+    paid = next((e for e in events if e["type"] == "PAYMENT_SUCCEEDED"), None)
+    if paid is None:
+        return False
+    events.insert(events.index(paid) + 1, _copy_event(paid, paid["offset_sec"] + rng.randint(5, 60)))
+    return True
+
+
+def _inject_duplicate_order_created(rng: random.Random, order: dict) -> bool:
+    created = order["events"][0]      # 주문 생성은 항상 첫 이벤트다 (make_events)
+    order["events"].insert(1, _copy_event(created, rng.randint(1, 10)))
+    return True
+
+
+def _inject_refund_to_failed_payment(rng: random.Random, order: dict) -> bool:
+    """환불이 직전 결제 실패를 가리키게 한다. 결제 실패가 없던 주문에는 성공 결제 앞에 실패 한 건을 넣는다."""
+    events = order["events"]
+    refund = next((e for e in events if e["type"] == "REFUND_SUCCEEDED"), None)
+    if refund is None:
+        return False
+    if not any(e["type"] == "PAYMENT_FAILED" for e in events):
+        paid = next(e for e in events if e["type"] == "PAYMENT_SUCCEEDED")
+        events.insert(events.index(paid), {"type": "PAYMENT_FAILED", "offset_sec": max(1, paid["offset_sec"] - 10),
+                                           "method": paid["method"], "fail_reason": pick(rng, FAIL_REASONS)})
+    refund["payment"] = "failed"
+    return True
+
+
+def _inject_refund_order_mismatch(rng: random.Random, order: dict, order_nos: list) -> bool:
+    refund = next((e for e in order["events"] if e["type"] == "REFUND_SUCCEEDED"), None)
+    others = [no for no in order_nos if no != order["order_no"]]
+    if refund is None or not others:
+        return False
+    refund["order_no"] = rng.choice(others)
+    return True
+
+
+def _inject_duplicate_item_id(rng: random.Random, order: dict) -> bool:
+    if len(order["items"]) < 2:
+        return False
+    row = rng.randint(2, len(order["items"]))
+    order["items"][row - 1]["reuse_item_id_of"] = rng.randint(1, row - 1)
+    return True
+
+
+def inject_errors(config: dict, day: date, orders: list[dict]) -> None:
+    """하루치 주문 일부를 오류 주문으로 바꾼다 (제자리 수정). 오류가 된 주문에는 "error": 종류 가 붙는다.
+
+    주문마다 (시드, 날짜, 주문 번호)로 정한 난수 하나로 종류를 고르고(비율만큼) 세부를 정한다. 다른 주문의 난수와 섞이지 않는다.
+    """
+    rates = error_rates(config)
+    if not rates:
+        return
+    order_nos = [order["order_no"] for order in orders]
+    for order in orders:
+        rng = random.Random(f"{config['seed']}-{day.isoformat()}-{order['order_no']}-error")
+        roll, kind = rng.random(), None
+        for name, rate in rates.items():
+            if roll < rate:
+                kind = name
+                break
+            roll -= rate
+        if kind is None:
+            continue
+        injected = {"fault": lambda: _inject_fault(rng, order),
+                    "double_payment": lambda: _inject_double_payment(rng, order),
+                    "duplicate_order_created": lambda: _inject_duplicate_order_created(rng, order),
+                    "refund_to_failed_payment": lambda: _inject_refund_to_failed_payment(rng, order),
+                    "refund_order_mismatch": lambda: _inject_refund_order_mismatch(rng, order, order_nos),
+                    "duplicate_item_id": lambda: _inject_duplicate_item_id(rng, order)}[kind]()
+        if injected:
+            order["error"] = kind
+
+
+def error_summary(scenarios: list[dict]) -> dict:
+    """{오류 종류: 주문 수}. 오류 주문이 없으면 빈 dict."""
+    counts = {}
+    for scenario in scenarios:
+        for order in scenario["orders"]:
+            if "error" in order:
+                counts[order["error"]] = counts.get(order["error"], 0) + 1
+    return counts
+
+
 def refund_factor(config: dict, day: date) -> float:
     """그 달의 환불 주문 비중 배수. exp(N(0, refund_sigma)) 이며 (시드, 연, 월)로 고정된다 (달마다 환불율이 흔들린다)."""
     shock = random.Random(f"{config['seed']}-refund-{day.year}-{day.month}").gauss(0, config["refund_sigma"])
@@ -237,6 +365,7 @@ def make_day(skus: dict, config: dict, day: date, mean: float, customers: int, l
     starts = sorted(start_second(rng, latest, config["hour_weights"]) for _ in range(count))
     kinds = order_kinds(config, day)
     orders = [make_order(rng, no, skus, config, kinds, customers, scenario_start, offset, limit) for no, offset in enumerate(starts, 1)]
+    inject_errors(config, day, orders)
     return {"id": f"L{day:%Y%m%d}", "title": f"장기 데이터 {day.isoformat()}", "start_kst": scenario_start.isoformat(),
             "orders": orders}
 

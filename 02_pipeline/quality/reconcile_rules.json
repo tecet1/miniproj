@@ -1,0 +1,76 @@
+{
+  "rules": [
+    {
+      "id": "reconcile_silver_orders",
+      "kind": "set",
+      "layer": "silver",
+      "severity": "error",
+      "scope": "full",
+      "description": "silver.orders: Bronze에서 다시 계산한 결과와 다른 행 수 (재계산에만 있는 행 + 실제에만 있는 행)",
+      "sql": "SELECT (SELECT COUNT(*) FROM (SELECT channel, event_id, order_id, user_id, shipping_fee, order_created_at FROM recon_orders EXCEPT SELECT channel, event_id, order_id, user_id, shipping_fee, order_created_at FROM {silver}.orders) a) + (SELECT COUNT(*) FROM (SELECT channel, event_id, order_id, user_id, shipping_fee, order_created_at FROM {silver}.orders EXCEPT SELECT channel, event_id, order_id, user_id, shipping_fee, order_created_at FROM recon_orders) b) AS violations"
+    },
+    {
+      "id": "reconcile_silver_order_items",
+      "kind": "set",
+      "layer": "silver",
+      "severity": "error",
+      "scope": "full",
+      "description": "silver.order_items: Bronze에서 다시 계산한 결과와 다른 행 수 (재계산에만 있는 행 + 실제에만 있는 행)",
+      "sql": "SELECT (SELECT COUNT(*) FROM (SELECT channel, order_item_id, order_id, product_id, quantity, unit_price, item_discount FROM recon_order_items EXCEPT SELECT channel, order_item_id, order_id, product_id, quantity, unit_price, item_discount FROM {silver}.order_items) a) + (SELECT COUNT(*) FROM (SELECT channel, order_item_id, order_id, product_id, quantity, unit_price, item_discount FROM {silver}.order_items EXCEPT SELECT channel, order_item_id, order_id, product_id, quantity, unit_price, item_discount FROM recon_order_items) b) AS violations"
+    },
+    {
+      "id": "reconcile_silver_payments",
+      "kind": "set",
+      "layer": "silver",
+      "severity": "error",
+      "scope": "full",
+      "description": "silver.payments: Bronze에서 다시 계산한 결과와 다른 행 수 (재계산에만 있는 행 + 실제에만 있는 행)",
+      "sql": "SELECT (SELECT COUNT(*) FROM (SELECT channel, event_id, order_id, user_id, payment_id, status, payment_method, payment_amount, payment_fail_reason_code, payment_created_at FROM recon_payments EXCEPT SELECT channel, event_id, order_id, user_id, payment_id, status, payment_method, payment_amount, payment_fail_reason_code, payment_created_at FROM {silver}.payments) a) + (SELECT COUNT(*) FROM (SELECT channel, event_id, order_id, user_id, payment_id, status, payment_method, payment_amount, payment_fail_reason_code, payment_created_at FROM {silver}.payments EXCEPT SELECT channel, event_id, order_id, user_id, payment_id, status, payment_method, payment_amount, payment_fail_reason_code, payment_created_at FROM recon_payments) b) AS violations"
+    },
+    {
+      "id": "reconcile_silver_order_cancellations",
+      "kind": "set",
+      "layer": "silver",
+      "severity": "error",
+      "scope": "full",
+      "description": "silver.order_cancellations: Bronze에서 다시 계산한 결과와 다른 행 수 (재계산에만 있는 행 + 실제에만 있는 행)",
+      "sql": "SELECT (SELECT COUNT(*) FROM (SELECT channel, event_id, order_id, user_id, cancel_reason_code, cancel_created_at FROM recon_cancellations EXCEPT SELECT channel, event_id, order_id, user_id, cancel_reason_code, cancel_created_at FROM {silver}.order_cancellations) a) + (SELECT COUNT(*) FROM (SELECT channel, event_id, order_id, user_id, cancel_reason_code, cancel_created_at FROM {silver}.order_cancellations EXCEPT SELECT channel, event_id, order_id, user_id, cancel_reason_code, cancel_created_at FROM recon_cancellations) b) AS violations"
+    },
+    {
+      "id": "reconcile_silver_refunds",
+      "kind": "set",
+      "layer": "silver",
+      "severity": "error",
+      "scope": "full",
+      "description": "silver.refunds: Bronze에서 다시 계산한 결과와 다른 행 수 (재계산에만 있는 행 + 실제에만 있는 행)",
+      "sql": "SELECT (SELECT COUNT(*) FROM (SELECT channel, event_id, order_id, user_id, refund_id, payment_id, order_item_id, refund_quantity, refund_amount, refund_type, refund_reason_code, refund_created_at FROM recon_refunds EXCEPT SELECT channel, event_id, order_id, user_id, refund_id, payment_id, order_item_id, refund_quantity, refund_amount, refund_type, refund_reason_code, refund_created_at FROM {silver}.refunds) a) + (SELECT COUNT(*) FROM (SELECT channel, event_id, order_id, user_id, refund_id, payment_id, order_item_id, refund_quantity, refund_amount, refund_type, refund_reason_code, refund_created_at FROM {silver}.refunds EXCEPT SELECT channel, event_id, order_id, user_id, refund_id, payment_id, order_item_id, refund_quantity, refund_amount, refund_type, refund_reason_code, refund_created_at FROM recon_refunds) b) AS violations"
+    },
+    {
+      "id": "reconcile_gold_fact_sales_item",
+      "kind": "set",
+      "layer": "gold",
+      "severity": "error",
+      "scope": "full",
+      "description": "gold.fact_sales_item: Bronze에서 다시 계산한 결과와 다른 행 수 (재계산에만 있는 행 + 실제에만 있는 행)",
+      "sql": "SELECT (SELECT COUNT(*) FROM (SELECT channel, order_item_id, product_id, payment_date, payment_method, order_id, user_id, payment_id, payment_at, quantity, item_gross_amount, item_discount, item_paid_amount, refund_quantity, refund_amount, last_refund_date FROM recon_fact_sales_item EXCEPT SELECT channel, order_item_id, product_id, payment_date, payment_method, order_id, user_id, payment_id, payment_at, quantity, item_gross_amount, item_discount, item_paid_amount, refund_quantity, refund_amount, last_refund_date FROM {gold}.fact_sales_item) a) + (SELECT COUNT(*) FROM (SELECT channel, order_item_id, product_id, payment_date, payment_method, order_id, user_id, payment_id, payment_at, quantity, item_gross_amount, item_discount, item_paid_amount, refund_quantity, refund_amount, last_refund_date FROM {gold}.fact_sales_item EXCEPT SELECT channel, order_item_id, product_id, payment_date, payment_method, order_id, user_id, payment_id, payment_at, quantity, item_gross_amount, item_discount, item_paid_amount, refund_quantity, refund_amount, last_refund_date FROM recon_fact_sales_item) b) AS violations"
+    },
+    {
+      "id": "reconcile_gold_fact_refund",
+      "kind": "set",
+      "layer": "gold",
+      "severity": "error",
+      "scope": "full",
+      "description": "gold.fact_refund: Bronze에서 다시 계산한 결과와 다른 행 수 (재계산에만 있는 행 + 실제에만 있는 행)",
+      "sql": "SELECT (SELECT COUNT(*) FROM (SELECT channel, refund_id, product_id, payment_date, refund_date, refund_profile_key, order_item_id, order_id, payment_id, refund_quantity, refund_amount FROM recon_fact_refund EXCEPT SELECT channel, refund_id, product_id, payment_date, refund_date, refund_profile_key, order_item_id, order_id, payment_id, refund_quantity, refund_amount FROM {gold}.fact_refund) a) + (SELECT COUNT(*) FROM (SELECT channel, refund_id, product_id, payment_date, refund_date, refund_profile_key, order_item_id, order_id, payment_id, refund_quantity, refund_amount FROM {gold}.fact_refund EXCEPT SELECT channel, refund_id, product_id, payment_date, refund_date, refund_profile_key, order_item_id, order_id, payment_id, refund_quantity, refund_amount FROM recon_fact_refund) b) AS violations"
+    },
+    {
+      "id": "reconcile_silver_quarantine",
+      "kind": "set",
+      "layer": "silver",
+      "severity": "error",
+      "scope": "full",
+      "description": "silver.quarantine: Bronze에서 다시 계산한 격리 위치와 다른 행 수",
+      "sql": "SELECT (SELECT COUNT(*) FROM (SELECT eh_partition, eh_offset FROM recon_rejected EXCEPT SELECT eh_partition, eh_offset FROM {silver}.quarantine) a) + (SELECT COUNT(*) FROM (SELECT eh_partition, eh_offset FROM {silver}.quarantine EXCEPT SELECT eh_partition, eh_offset FROM recon_rejected) b) AS violations"
+    }
+  ]
+}

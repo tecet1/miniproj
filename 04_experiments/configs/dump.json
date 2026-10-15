@@ -33,6 +33,14 @@
   },
   "nb_dispersion": 50,
   "duplicate_rate": 0.01,
+  "error_rates": {
+    "fault": 0.01,
+    "double_payment": 0.005,
+    "duplicate_order_created": 0.005,
+    "refund_to_failed_payment": 0.02,
+    "refund_order_mismatch": 0.02,
+    "duplicate_item_id": 0.005
+  },
   "customers_start": 30000,
   "refund_sigma": 0.25,
   "hour_weights": [

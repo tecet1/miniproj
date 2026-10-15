@@ -60,6 +60,14 @@
 - `batch_check.make_after_batch(schema)`: Silver 배치마다 "들어온 수 = Silver 반영 + 중복 제거 + 격리"를 확인해 `silver_batch_balance` 한 줄을 `batch_id`와 함께 기록한다. `silver_stream.run_silver(..., after_batch=...)`로 연결한다(`run_silver.py` 노트북이 연결한다).
 - 로컬 Spark에서 SQL 의미와 집계를 확인했다. results 테이블 저장, Delta MERGE 뒤 조회, 노트북의 `sys.path` 가정은 **Databricks 미검증**이다.
 
+## Bronze 재계산 대조 (전수 정답 비교, 2026-10-15)
+
+- 정답 파일 없이, Bronze 원본(payload)에서 **독립 경로로 Silver·Gold를 다시 계산**해 실제 테이블과 행 단위로 비교한다. `run_reconcile.py` 노트북이 `run_quality_checks(mode="reconcile")`를 부른다. 긴 주기(하루 한 번 등) 배치용이다.
+- `reconcile_sql.py`가 Bronze 행에서 채널 A·B·C의 필드를 SQL(`get_json_object`, `from_json`)로 직접 읽어 `recon_*` 임시 뷰를 만든다. Silver 변환 코드(`channels/*`, `validate_*`)와 `gold_sql.py`를 쓰지 않고 명세 2·4·6.1절만 보고 따로 구현했다. 같은 해석 오류를 두 경로가 함께 하지 않게 하려는 것이다.
+- `reconcile_rules.json`(8개, `reconcile_sql.rule_list()`가 만든다)이 `silver.orders·order_items·payments·order_cancellations·refunds·quarantine`, `gold.fact_sales_item·fact_refund`를 재계산 결과와 비교한다. 위반 건수 = (재계산에만 있는 행) + (실제에만 있는 행). 0이어야 하고 결과는 `quality.results`(`mode = reconcile`)에 쌓인다.
+- 로컬 Spark에서 고정 입력(S24~S28 포함)과 오류를 높은 비율로 주입한 합성 데이터, 손으로 만든 변형 51줄을 파이썬 파이프라인 결과와 대조해 모든 규칙이 0임을 확인했고, 실제 테이블을 일부러 틀리게 만든 변이도 잡힘을 확인했다 (`tests/quality/test_reconcile.py`).
+- 한계: JSON 숫자가 문자열("5")로 오면 SQL은 정수로 받아들이고 Silver는 INVALID_TYPE으로 격리한다 (생성기는 "N/A"만 쓴다). 파이프라인이 Bronze를 따라잡기 전에 돌리면 반영 중인 행 때문에 차이가 난다. 중간 뷰를 `localCheckpoint`로 계산해 두므로 서버리스에서는 느릴 수 있다. **Databricks 미검증.**
+
 ## 파일
 
 | 파일 | 역할 |
@@ -68,6 +76,9 @@
 | `run_checks.py` | 집합 규칙 실행(증분·전수)과 results 저장 |
 | `batch_check.py` | Silver 배치 균형 검사와 기록 |
 | `run_quality.py` | 노트북(호출만) |
+| `reconcile_sql.py` | Bronze 재계산 SQL(recon_* 뷰)과 reconcile 규칙 만들기 |
+| `reconcile_rules.json` | Bronze 재계산 대조 규칙 8개 (`reconcile_sql.rule_list()`로 생성) |
+| `run_reconcile.py` | 재계산 대조 노트북(호출만) |
 | `rules.py` | `load_rules`(읽기·검사), `validate_rules`, `row_violation_condition`(행 규칙 → Spark SQL 위반 조건), `render_set_sql`(집합 규칙 SQL 채우기), `judge`(허용값 판정) |
 
 ## 지금 들어 있는 규칙

@@ -16,7 +16,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path[:0] = [str(ROOT / "04_experiments" / "src"), str(ROOT / "01_contracts" / "src")]
 
+sys.path.insert(0, str(ROOT / "02_pipeline" / "silver"))
+
 import canonical  # noqa: E402
+import generate  # noqa: E402
 import channel_a  # noqa: E402
 import channel_b  # noqa: E402
 import channel_c  # noqa: E402
@@ -25,10 +28,13 @@ import scenario_loader  # noqa: E402
 import scenario_validator  # noqa: E402
 import synth_scenarios as synth  # noqa: E402
 from ids import NamedIds  # noqa: E402
+from convert_row import convert_row  # noqa: E402
+from validate_skus import load_known_skus  # noqa: E402
 
 CONTRACTS = ROOT / "01_contracts" / "contracts"
 SKUS = scenario_loader.load_skus(CONTRACTS / "skus.json")
-CONFIG = json.loads((ROOT / "04_experiments" / "configs" / "dump.json").read_text(encoding="utf-8"))
+DUMP_CONFIG = json.loads((ROOT / "04_experiments" / "configs" / "dump.json").read_text(encoding="utf-8"))
+CONFIG = dict(DUMP_CONFIG, error_rates={})      # 모형 테스트는 오류 주문이 없는 데이터로 본다 (오류 주입은 TestErrorInjection이 따로 본다)
 YEAR = synth.build_scenarios(SKUS, CONFIG)
 ORDERS = [(s, o) for s in YEAR for o in s["orders"]]
 START, END = date.fromisoformat(CONFIG["start"]), date.fromisoformat(CONFIG["end"])
@@ -408,6 +414,135 @@ class TestWithExistingGenerators(unittest.TestCase):
         self.assertEqual(sum(len(o["items"]) for o in orders if kind_of(o) in ("PAID", "RETRY_PAID", "REFUNDED")),
                          result["fact_sales_item"])
         self.assertEqual(0, result["quarantine"])
+
+
+# ── 비율 기반 오류 주입 (2026-10-15) ─────────────────────────────────────────────────────
+SHORT = dict(CONFIG, start="2025-11-03", end="2025-11-16")      # 14일(주문 약 3천 건)로 줄여 빠르게 돈다
+ALL_RATES = {"fault": 0.04, "double_payment": 0.04, "duplicate_order_created": 0.04, "refund_to_failed_payment": 0.15,
+             "refund_order_mismatch": 0.15, "duplicate_item_id": 0.08}
+KNOWN_SKUS = load_known_skus(CONTRACTS / "skus.json")
+
+
+def by_key(scenarios):
+    return {(s["id"], o["order_no"]): o for s in scenarios for o in s["orders"]}
+
+
+class TestErrorInjection(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.base = synth.build_scenarios(SKUS, SHORT)
+        cls.injected = synth.build_scenarios(SKUS, dict(SHORT, error_rates=ALL_RATES))
+        cls.base_orders, cls.orders = by_key(cls.base), by_key(cls.injected)
+
+    def of_kind(self, kind):
+        return [o for o in self.orders.values() if o.get("error") == kind]
+
+    def test_without_rates_nothing_is_injected_and_zero_rates_change_nothing(self):
+        self.assertEqual({}, synth.error_summary(self.base))
+        zero = synth.build_scenarios(SKUS, dict(SHORT, error_rates=dict.fromkeys(synth.ERROR_KINDS, 0)))
+        self.assertEqual(self.base, zero)
+
+    def test_same_config_gives_the_same_errors_and_another_seed_gives_others(self):
+        again = synth.build_scenarios(SKUS, dict(SHORT, error_rates=ALL_RATES))
+        self.assertEqual(self.injected, again)
+        other = synth.build_scenarios(SKUS, dict(SHORT, seed=SHORT["seed"] + 1, error_rates=ALL_RATES))
+        self.assertNotEqual(synth.error_summary(self.injected), synth.error_summary(other))
+
+    def test_orders_without_an_error_are_exactly_the_ones_without_injection(self):
+        self.assertEqual(set(self.base_orders), set(self.orders))
+        for key, order in self.orders.items():
+            if "error" not in order:
+                self.assertEqual(self.base_orders[key], order, key)
+
+    def test_every_kind_appears_and_each_order_has_at_most_one_error(self):
+        summary = synth.error_summary(self.injected)
+        self.assertEqual(set(synth.ERROR_KINDS), set(summary), summary)
+        self.assertEqual(sum(summary.values()), len([o for o in self.orders.values() if "error" in o]))
+
+    def test_injected_scenarios_still_pass_the_validator(self):
+        scenario_validator.validate_scenarios(self.injected, SKUS)
+
+    def test_fault_goes_on_one_event_that_the_fault_can_be_applied_to(self):
+        for order in self.of_kind("fault"):
+            marked = [e for e in order["events"] if "fault" in e]
+            self.assertEqual(1, len(marked))
+            fault, event = marked[0]["fault"], marked[0]
+            self.assertIn(fault, synth.FAULTS)
+            if fault == "MISSING_REQUIRED":
+                self.assertTrue(event["type"].startswith("PAYMENT_"))
+            if fault == "INVALID_TYPE":
+                self.assertEqual("ORDER_CREATED", event["type"])
+
+    def test_double_payment_has_two_successful_payments_in_time_order(self):
+        for order in self.of_kind("double_payment"):
+            paid = [e for e in order["events"] if e["type"] == "PAYMENT_SUCCEEDED"]
+            self.assertEqual(2, len(paid))
+            self.assertLess(paid[0]["offset_sec"], paid[1]["offset_sec"])
+            self.assertNotIn("send_count", paid[1])
+
+    def test_duplicate_order_created_has_two_order_created_events(self):
+        for order in self.of_kind("duplicate_order_created"):
+            self.assertEqual(2, [e["type"] for e in order["events"]].count("ORDER_CREATED"))
+            self.assertEqual("ORDER_CREATED", order["events"][0]["type"])
+
+    def test_refund_to_failed_payment_has_a_failed_payment_before_the_refund(self):
+        for order in self.of_kind("refund_to_failed_payment"):
+            types = [e["type"] for e in order["events"]]
+            refund = next(e for e in order["events"] if e["type"] == "REFUND_SUCCEEDED")
+            self.assertEqual("failed", refund["payment"])
+            self.assertLess(types.index("PAYMENT_FAILED"), types.index("REFUND_SUCCEEDED"))
+            self.assertEqual(1, types.count("PAYMENT_SUCCEEDED"))
+
+    def test_refund_order_mismatch_points_at_another_order_of_the_same_day(self):
+        for key, order in ((k, o) for k, o in self.orders.items() if o.get("error") == "refund_order_mismatch"):
+            refund = next(e for e in order["events"] if e["type"] == "REFUND_SUCCEEDED")
+            day_orders = {no for (day, no) in self.orders if day == key[0]}
+            self.assertIn(refund["order_no"], day_orders)
+            self.assertNotEqual(order["order_no"], refund["order_no"])
+
+    def test_duplicate_item_id_reuses_an_earlier_row_of_a_multi_item_order(self):
+        for order in self.of_kind("duplicate_item_id"):
+            reused = [(i, item["reuse_item_id_of"]) for i, item in enumerate(order["items"], 1) if "reuse_item_id_of" in item]
+            self.assertEqual(1, len(reused))
+            self.assertLess(reused[0][1], reused[0][0])
+
+    def test_realized_share_follows_the_rate_for_a_kind_that_applies_to_every_order(self):
+        scenarios = synth.build_scenarios(SKUS, dict(SHORT, error_rates={"fault": 0.1}))
+        orders = [o for s in scenarios for o in s["orders"]]
+        share = sum(1 for o in orders if o.get("error") == "fault") / len(orders)
+        self.assertTrue(0.08 <= share <= 0.12, share)
+
+    def test_kinds_that_do_not_fit_an_order_are_skipped_so_the_share_is_lower(self):
+        scenarios = synth.build_scenarios(SKUS, dict(SHORT, error_rates={"refund_to_failed_payment": 0.5}))
+        orders = [o for s in scenarios for o in s["orders"]]
+        injected = [o for o in orders if o.get("error")]
+        self.assertTrue(injected)
+        self.assertLess(len(injected) / len(orders), 0.5 * 0.3)       # 환불 주문은 일부(약 14%)뿐이다
+        self.assertTrue(all(any(e["type"] == "REFUND_SUCCEEDED" for e in o["events"]) for o in injected))
+
+    def test_the_shipped_dump_config_has_valid_rates_for_every_kind(self):
+        rates = synth.error_rates(DUMP_CONFIG)
+        self.assertEqual(set(synth.ERROR_KINDS), set(rates))
+        self.assertLessEqual(sum(rates.values()), 0.1)      # 오류가 데이터의 일부(10% 이하)다
+
+    def test_bad_rates_are_refused(self):
+        for bad in ({"nonsense": 0.1}, {"fault": -0.1}, {"fault": 1.5}, {"fault": 0.6, "double_payment": 0.6}, {"fault": "x"}):
+            with self.assertRaises(ValueError, msg=bad):
+                synth.error_rates(dict(SHORT, error_rates=bad))
+
+    def test_the_generator_and_silver_conversion_treat_each_kind_as_designed(self):
+        """채널 A 원본으로 만들어 Silver 행 변환에 넣는다: 격리 대상 오류와 items ID 중복만 격리되고 나머지 오류 주문은 통과한다."""
+        lines = list(dict.fromkeys(generate.build_lines("A", self.injected, SKUS, NamedIds(7))))
+        reasons = Counter()
+        for line in lines:
+            result = convert_row("A", json.loads(line)["payload"], KNOWN_SKUS)
+            if result["reason_code"]:
+                reasons[result["reason_code"]] += 1
+        summary = synth.error_summary(self.injected)
+        faults = sum(1 for o in self.orders.values() for e in o["events"] if "fault" in e)
+        self.assertEqual(faults, sum(reasons[r] for r in synth.FAULTS))
+        self.assertEqual(summary["duplicate_item_id"], reasons["INVALID_VALUE"])
+        self.assertEqual(faults + summary["duplicate_item_id"], sum(reasons.values()))
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@
 import re
 import sys
 import unittest
+from unittest import mock
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -130,6 +131,52 @@ class TestSaveResults(unittest.TestCase):
         spark = self.FakeSpark()
         R.save_results(spark, [])
         self.assertEqual([], spark.statements)
+
+
+class TestReconcileMode(unittest.TestCase):
+    RECONCILE = Q.load_rules(R.RECONCILE_RULES)
+
+    def test_reconcile_runs_every_rule_of_the_reconcile_file(self):
+        self.assertEqual([r["id"] for r in self.RECONCILE], [r["id"] for r in R.select_rules(self.RECONCILE, "reconcile")])
+
+    def test_reconcile_never_uses_a_time_window(self):
+        self.assertEqual(R.EPOCH, R.since_for("reconcile", NOW))
+
+    def run_reconcile(self, violations):
+        spark = mock.Mock()
+        with mock.patch.object(R.reconcile_sql, "create_views") as create_views,              mock.patch.object(R, "previous_check_time", return_value=NOW), mock.patch.object(R, "save_results") as save:
+            spark.sql.side_effect = lambda sql: mock.Mock(first=lambda: {"violations": violations})
+            rows = R.run_quality_checks(spark, SCHEMAS, mode="reconcile", now=NOW)
+        return rows, create_views, save
+
+    def test_views_are_built_from_the_bronze_events_table_and_the_known_skus_first(self):
+        rows, create_views, save = self.run_reconcile(0)
+        (spark, bronze, skus), _ = create_views.call_args
+        self.assertEqual("qb.events", bronze)
+        self.assertEqual(15, len(skus))
+        self.assertIn("SKU-001", skus)
+        save.assert_called_once()
+
+    def test_every_reconcile_rule_is_recorded_with_the_reconcile_mode(self):
+        rows, _, _ = self.run_reconcile(0)
+        self.assertEqual([r["id"] for r in self.RECONCILE], [r["rule_id"] for r in rows])
+        self.assertEqual({"reconcile"}, {r["mode"] for r in rows})
+        self.assertEqual({"pass"}, {r["status"] for r in rows})
+        self.assertEqual({R.EPOCH}, {r["since"] for r in rows})
+
+    def test_a_difference_is_recorded_as_an_error_with_its_count(self):
+        rows, _, _ = self.run_reconcile(3)
+        self.assertEqual({"error"}, {r["status"] for r in rows})
+        self.assertEqual({3}, {r["violations"] for r in rows})
+        self.assertEqual(len(self.RECONCILE), len(R.failed(rows)))
+
+    def test_the_other_modes_do_not_build_reconcile_views(self):
+        spark = mock.Mock()
+        with mock.patch.object(R.reconcile_sql, "create_views") as create_views,              mock.patch.object(R, "previous_check_time", return_value=None), mock.patch.object(R, "save_results"):
+            spark.sql.side_effect = lambda sql: mock.Mock(first=lambda: {"violations": 0})
+            R.run_quality_checks(spark, SCHEMAS, mode="incremental", now=NOW)
+            R.run_quality_checks(spark, SCHEMAS, mode="full", now=NOW)
+        create_views.assert_not_called()
 
 
 # ── 로컬 Spark: 실제 규칙 SQL이 증분 범위만 보는지 ─────────────────────────────────────────────

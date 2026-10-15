@@ -7,6 +7,8 @@
         이 기대값은 Bronze에 픽스처(Function 경로)와 덤프(직접 적재)가 모두 들어간 상태의 값이다.
 [ID] 이벤트 줄의 ID는 ids.NamedIds(seed)로 만든다. 같은 설정이면 바이트까지 같다. 픽스처는 읽기 쉬운 ID라 충돌하지 않는다.
 시나리오 생성은 synth_scenarios(채널별 규모·성장이 다르다), 줄 만들기는 generate가 한다 (여기서는 이어 붙이기만 한다).
+[오류 주입] 설정의 error_rates가 0이 아니면 일부 주문이 오류 주문이 된다 (synth_scenarios 머리말). 이때 expected_dump.json은 격리 대상 오류(fault)만 알고
+업무 키 위반·환불 오류·items ID 중복은 모르므로 건수 기대값으로 쓰지 않는다 (정답 비교를 두지 않는 방침, 2026-10-15). 기본 설정은 비율이 0이다.
 """
 import argparse
 import json
@@ -69,6 +71,11 @@ def main(argv=None) -> None:
     skus = scenario_loader.load_skus(CONTRACTS / "skus.json")
     fixture_scenarios = scenario_loader.load_scenarios(CONTRACTS / "scenarios.json")
     combined = write_dump(args.out, config, skus, fixture_scenarios)
+    synthetic = synth_scenarios.build_channel_scenarios(skus, config)
+    for channel in generate.CHANNELS:
+        summary = synth_scenarios.error_summary(synthetic[channel])
+        if summary:
+            print(f"{channel}: 오류 주문 {sum(summary.values())}건 {summary}")
     for channel in generate.CHANNELS:
         path = args.out / "dump" / channel / "events.jsonl"
         lines = path.read_text(encoding="utf-8").count("\n")

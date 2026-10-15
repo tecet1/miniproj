@@ -18,7 +18,7 @@ CONTRACTS = ROOT / "01_contracts" / "contracts"
 FIXTURES = ROOT / "01_contracts" / "data_fixtures"
 SKUS = scenario_loader.load_skus(CONTRACTS / "skus.json")
 FIXTURE_SCENARIOS = scenario_loader.load_scenarios(CONTRACTS / "scenarios.json")
-CONFIG = json.loads(build_dump.DEFAULT_CONFIG.read_text(encoding="utf-8"))
+CONFIG = dict(json.loads(build_dump.DEFAULT_CONFIG.read_text(encoding="utf-8")), error_rates={})   # 오류 주입은 test_synth_scenarios가 본다
 CHANNELS = ("A", "B", "C")
 
 
